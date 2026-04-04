@@ -1,0 +1,23 @@
+
+{
+  "placeholderImages": [
+    {
+      "id": "school-logo",
+      "description": "Educational institution logo",
+      "imageUrl": "https://picsum.photos/seed/edu1/200/200",
+      "imageHint": "school logo"
+    },
+    {
+      "id": "student-avatar",
+      "description": "Student profile picture placeholder",
+      "imageUrl": "https://picsum.photos/seed/student/150/150",
+      "imageHint": "student portrait"
+    },
+    {
+      "id": "teacher-avatar",
+      "description": "Teacher profile picture placeholder",
+      "imageUrl": "https://picsum.photos/seed/teacher/150/150",
+      "imageHint": "teacher professional"
+    }
+  ]
+}
