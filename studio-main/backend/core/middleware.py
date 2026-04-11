@@ -2,9 +2,24 @@ import logging
 import json
 from django.utils.deprecation import MiddlewareMixin
 from django.utils import timezone
+from django.middleware.security import SecurityMiddleware
 from core.utils import get_client_ip
 
 logger = logging.getLogger(__name__)
+
+
+class HealthcheckAwareSecurityMiddleware(SecurityMiddleware):
+    """
+    Skip SSL redirects for the Railway healthcheck endpoint so the platform
+    can still enforce secure URLs elsewhere without failing liveness checks.
+    """
+
+    HEALTHCHECK_PATHS = {"/api/health/", "/api/health"}
+
+    def process_request(self, request):
+        if request.path in self.HEALTHCHECK_PATHS:
+            return None
+        return super().process_request(request)
 
 
 class RequestLoggingMiddleware(MiddlewareMixin):
