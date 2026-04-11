@@ -155,8 +155,8 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#F0F2F5] p-4 sm:p-8 relative overflow-hidden">
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-[100px]" />
-      <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-secondary/10 rounded-full translate-y-1/2 -translate-x-1/2 blur-[100px]" />
+      <div className="pointer-events-none absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-[100px]" />
+      <div className="pointer-events-none absolute bottom-0 left-0 w-[500px] h-[500px] bg-secondary/10 rounded-full translate-y-1/2 -translate-x-1/2 blur-[100px]" />
 
       {isDev && (
         <div className="absolute top-8 left-8 z-20">
@@ -167,12 +167,12 @@ export default function LoginPage() {
         </div>
       )}
 
-      <div className="absolute top-8 right-8">
+      <div className="absolute top-6 right-4 z-30 sm:top-8 sm:right-8">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="outline"
-              className="h-11 px-5 gap-2 bg-white/50 backdrop-blur-xl border-primary/10 rounded-2xl shadow-sm hover:bg-white transition-all"
+              className="h-11 px-4 sm:px-5 gap-2 bg-white/80 backdrop-blur-xl border-primary/10 rounded-2xl shadow-sm hover:bg-white transition-all touch-manipulation"
             >
               <Languages className="w-4 h-4 text-primary" />
               <span className="font-bold text-xs uppercase tracking-widest">
