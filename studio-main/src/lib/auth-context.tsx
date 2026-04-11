@@ -196,8 +196,8 @@ interface AuthContextType {
   schools: SchoolInfo[];
   publicEvents: PublicEvent[];
   staffRemarks: StaffRemark[];
-  login: (matricule: string) => Promise<void>;
-  activateAccount: (matricule: string) => Promise<void>;
+  login: (matricule: string, password: string) => Promise<void>;
+  activateAccount: (matricule: string, password: string, confirmPassword: string) => Promise<void>;
   updateUser: (updates: Partial<User>) => Promise<void>;
   updateSchool: (updates: Partial<SchoolInfo>) => Promise<void>;
   updatePlatformSettings: (updates: Partial<PlatformSettings>) => Promise<void>;
@@ -366,10 +366,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     restoreSession();
   }, []);
 
-  const login = async (matricule: string) => {
+  const login = async (matricule: string, password: string) => {
     setIsLoading(true);
     try {
-      const response = await authService.login(matricule);
+      const response = await authService.login(matricule, password);
       if (response.access && response.refresh) {
         setTokens(response.access, response.refresh);
       }
@@ -396,6 +396,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const boardRoles = ["CEO", "CTO", "COO", "INV", "SUPER_ADMIN", "DESIGNER"];
         router.push(boardRoles.includes(mappedUser.role) ? "/dashboard" : "/welcome");
       }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const activateAccount = async (matricule: string, password: string, confirmPassword: string) => {
+    setIsLoading(true);
+    try {
+      await authService.activateAccount(matricule, password, confirmPassword);
     } finally {
       setIsLoading(false);
     }
@@ -573,7 +582,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         publicEvents,
         staffRemarks,
         login,
-        activateAccount: login,
+        activateAccount,
         updateUser,
         updateSchool,
         updatePlatformSettings,

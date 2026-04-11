@@ -44,7 +44,7 @@ type AuthMode = "login" | "activate" | "forgot" | "otp" | "reset" | "success";
 const isDev = process.env.NODE_ENV === "development";
 
 export default function LoginPage() {
-  const { login, platformSettings } = useAuth();
+  const { login, activateAccount, platformSettings } = useAuth();
   const { setLanguage, language, t } = useI18n();
   const { toast } = useToast();
 
@@ -77,12 +77,12 @@ export default function LoginPage() {
     if (mode !== "login" || isProcessing) return;
     setIsProcessing(true);
     try {
-      await login(matricule);
-      toast({ title: "Welcome back", description: "Connected to live backend." });
+      await login(matricule, authData.password);
+      toast({ title: t("welcomeBack"), description: t("connectedToLiveBackend") });
     } catch (error: any) {
       const errorMessage =
-        error.response?.data?.message || error.message || "Login failed. Please try again.";
-      toast({ variant: "destructive", title: "Authentication Failed", description: errorMessage });
+        error.response?.data?.message || error.response?.data?.detail || error.message || t("loginFailedTryAgain");
+      toast({ variant: "destructive", title: t("authFailed"), description: errorMessage });
     } finally {
       setIsProcessing(false);
     }
@@ -95,26 +95,25 @@ export default function LoginPage() {
 
     if (mode === "login" || mode === "activate") {
       if (mode === "activate" && authData.password !== authData.confirmPassword) {
-        toast({
-          variant: "destructive",
-          title: "Password Mismatch",
-          description:
-            language === "en"
-              ? "The passwords provided do not match."
-              : "Les mots de passe ne correspondent pas.",
-        });
+        toast({ variant: "destructive", title: t("passwordMismatch"), description: t("passwordsDoNotMatch") });
         setIsProcessing(false);
         return;
       }
 
       try {
-        await login(authData.matricule);
+        if (mode === "activate") {
+          await activateAccount(authData.matricule, authData.password, authData.confirmPassword);
+          toast({ title: t("accountActivated"), description: t("accountActivatedDesc") });
+          switchMode("login");
+        } else {
+          await login(authData.matricule, authData.password);
+        }
       } catch (error: any) {
         const errorMessage =
-          error.response?.data?.message || error.message || "Invalid credentials";
+          error.response?.data?.message || error.response?.data?.detail || error.message || t("invalidCredentials");
         toast({
           variant: "destructive",
-          title: "Authentication Failed",
+          title: t("authFailed"),
           description: errorMessage,
         });
       } finally {
@@ -124,7 +123,7 @@ export default function LoginPage() {
       setTimeout(() => {
         setIsProcessing(false);
         setAuthMode("otp");
-        toast({ title: t("otpSent"), description: "Check your email for the 6-digit code." });
+        toast({ title: t("otpSent"), description: t("checkEmailForCode") });
       }, 1000);
     } else if (mode === "otp") {
       setTimeout(() => {
@@ -163,7 +162,7 @@ export default function LoginPage() {
         <div className="absolute top-8 left-8 z-20">
           <div className="flex items-center gap-2 px-4 py-2 bg-green-50 border border-green-200 rounded-full shadow-sm">
             <Wifi className="w-4 h-4 text-green-600 animate-pulse" />
-            <span className="text-xs font-bold text-green-700">Live Backend Connected</span>
+                <span className="text-xs font-bold text-green-700">{t("connectedToLiveBackend")}</span>
           </div>
         </div>
       )}
@@ -208,7 +207,7 @@ export default function LoginPage() {
               {platformSettings.name}
             </h1>
             <p className="text-xs text-muted-foreground font-black uppercase tracking-[0.4em] opacity-40">
-              High-Fidelity Access Portal
+              {t("highFidelityAccessPortal")}
             </p>
           </div>
         </div>
@@ -221,18 +220,17 @@ export default function LoginPage() {
               </div>
               <div className="space-y-2">
                 <CardTitle className="text-3xl font-black text-primary uppercase tracking-tighter">
-                  Credentials Updated
+                  {t("credentialsUpdated")}
                 </CardTitle>
                 <CardDescription className="text-sm font-medium px-4">
-                  Your identity records have been synchronized. You may now proceed to sign in with
-                  your updated credentials.
+                  {t("credentialsUpdatedDesc")}
                 </CardDescription>
               </div>
               <Button
                 onClick={() => switchMode("login")}
                 className="w-full h-16 rounded-[1.5rem] font-black uppercase tracking-widest text-sm bg-primary shadow-xl hover:bg-primary/90 transition-all active:scale-95"
               >
-                Return to Secure Sign In
+                {t("returnToSignIn")}
               </Button>
             </div>
           ) : (
@@ -242,7 +240,7 @@ export default function LoginPage() {
                   {mode === "login"
                     ? t("signIn")
                     : mode === "activate"
-                      ? "ACTIVATE ACCOUNT"
+                      ? t("activateAccountTitle")
                       : t("resetPassword")}
                 </CardTitle>
               </CardHeader>
@@ -267,7 +265,7 @@ export default function LoginPage() {
                       </div>
                       <div className="space-y-3">
                         <Label className="text-[10px] uppercase font-black text-muted-foreground tracking-[0.2em] ml-1 flex items-center gap-2">
-                          <Mail className="w-3.5 h-3.5 text-primary/40" /> Verified Corporate Email
+                          <Mail className="w-3.5 h-3.5 text-primary/40" /> {t("verifiedCorporateEmail")}
                         </Label>
                         <Input
                           required
@@ -331,7 +329,7 @@ export default function LoginPage() {
                   {mode === "activate" && (
                     <div className="space-y-3 animate-in slide-in-from-top-2">
                       <Label className="text-[10px] uppercase font-black text-muted-foreground tracking-[0.2em] ml-1 flex items-center gap-2">
-                        <ShieldCheck className="w-3.5 h-3.5 text-primary/40" /> Confirm Password
+                        <ShieldCheck className="w-3.5 h-3.5 text-primary/40" /> {t("confirmPasswordLabel")}
                       </Label>
                       <Input
                         required
@@ -351,7 +349,7 @@ export default function LoginPage() {
                     <div className="space-y-6 animate-in zoom-in-95">
                       <div className="space-y-3">
                         <Label className="text-[10px] uppercase font-black text-muted-foreground tracking-[0.2em] text-center block">
-                          6-Digit Verification Code
+                          {t("sixDigitVerificationCode")}
                         </Label>
                         <Input
                           required
@@ -364,7 +362,7 @@ export default function LoginPage() {
                         />
                       </div>
                       <p className="text-[10px] text-center text-muted-foreground font-black uppercase tracking-widest opacity-40">
-                        Code expires in 05:00
+                        {t("codeExpires")}
                       </p>
                     </div>
                   )}
@@ -376,18 +374,17 @@ export default function LoginPage() {
                           <CheckCircle2 className="w-6 h-6" />
                         </div>
                         <h4 className="text-sm font-black text-green-900 uppercase tracking-tight">
-                          Identity Verified
+                          {t("identityVerified")}
                         </h4>
                         <p className="text-[11px] text-green-800 font-medium">
-                          Your account has been identified. Please define your new secure credentials
-                          below.
+                          {t("resetIdentityDesc")}
                         </p>
                       </div>
 
                       <div className="space-y-6">
                         <div className="space-y-3">
                           <Label className="text-[10px] uppercase font-black text-muted-foreground tracking-[0.2em] ml-1">
-                            New Secure Password
+                            {t("newSecurePassword")}
                           </Label>
                           <Input
                             required
@@ -403,7 +400,7 @@ export default function LoginPage() {
                         </div>
                         <div className="space-y-3">
                           <Label className="text-[10px] uppercase font-black text-muted-foreground tracking-[0.2em] ml-1">
-                            Confirm New Password
+                            {t("confirmNewPasswordLabel")}
                           </Label>
                           <Input
                             required
@@ -435,19 +432,19 @@ export default function LoginPage() {
                       <>
                         <Loader2 className="w-6 h-6 animate-spin" />
                         {mode === "login"
-                          ? "Authenticating..."
-                          : "Processing..."}
+                          ? t("authenticating")
+                          : t("processing")}
                       </>
                     ) : mode === "login" ? (
-                      "Open Dashboard"
+                      t("openDashboard")
                     ) : mode === "activate" ? (
-                      "Activate Account"
+                      t("activateAccountCta")
                     ) : mode === "forgot" ? (
-                      "Identify Record"
+                      t("identifyRecord")
                     ) : mode === "otp" ? (
-                      "Verify Security"
+                      t("verifySecurity")
                     ) : (
-                      "Commit Reset"
+                      t("commitReset")
                     )}
                   </Button>
                 </form>
@@ -486,7 +483,7 @@ export default function LoginPage() {
           >
             <Link href="/community">
               <Sparkles className="w-4 h-4 text-secondary fill-secondary/20" />
-              Visit Community Portal
+              {t("visitCommunityPortal")}
               <ExternalLink className="w-3.5 h-3.5 ml-1 opacity-40" />
             </Link>
           </Button>
