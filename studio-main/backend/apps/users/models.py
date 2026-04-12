@@ -1,8 +1,9 @@
 import uuid
 from decimal import Decimal
 from django.db import models
+from django.utils import timezone
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
-from django.core.validators import RegexValidator
+from django.core.validators import RegexValidator, MinValueValidator
 
 
 class UserRole(models.TextChoices):
@@ -197,6 +198,11 @@ class User(AbstractBaseUser, PermissionsMixin):
         super().save(*args, **kwargs)
 
 
+class FounderAccessLevel(models.TextChoices):
+    READ_ONLY = 'READ_ONLY', 'Read Only'
+    FULL = 'FULL', 'Full Access'
+
+
 class FounderProfile(models.Model):
     """Founder board profile with share ownership metadata."""
 
@@ -209,6 +215,31 @@ class FounderProfile(models.Model):
     primary_share_percentage = models.DecimalField(max_digits=6, decimal_places=2, default=0)
     is_primary_founder = models.BooleanField(default=False)
     can_be_removed = models.BooleanField(default=True)
+
+    # Renewable shares governance
+    has_renewable_shares = models.BooleanField(
+        default=False,
+        help_text='CEO/CTO determines if this founder has shares that must be periodically renewed.',
+    )
+    share_renewal_period_days = models.PositiveIntegerField(
+        default=365,
+        validators=[MinValueValidator(1)],
+        help_text='Number of days in the renewal period before shares expire.',
+    )
+    shares_expire_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When the founder\'s board participation expires (renewable shares only).',
+    )
+
+    # Activity permission level
+    access_level = models.CharField(
+        max_length=20,
+        choices=FounderAccessLevel.choices,
+        default=FounderAccessLevel.FULL,
+        help_text='READ_ONLY founders can view but cannot perform write operations.',
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -218,6 +249,8 @@ class FounderProfile(models.Model):
         indexes = [
             models.Index(fields=['is_primary_founder']),
             models.Index(fields=['can_be_removed']),
+            models.Index(fields=['shares_expire_at']),
+            models.Index(fields=['access_level']),
         ]
 
     def __str__(self):
@@ -225,16 +258,35 @@ class FounderProfile(models.Model):
 
     @property
     def additional_share_percentage(self):
-        total = self.share_adjustments.aggregate(total=models.Sum('percentage')).get('total')
+        """Sum only non-expired share adjustments."""
+        now = timezone.now()
+        total = self.share_adjustments.filter(
+            models.Q(expires_at__isnull=True) | models.Q(expires_at__gt=now)
+        ).aggregate(total=models.Sum('percentage')).get('total')
         return total or Decimal('0.00')
 
     @property
     def total_share_percentage(self):
         return (self.primary_share_percentage or Decimal('0.00')) + self.additional_share_percentage
 
+    @property
+    def is_share_expired(self):
+        """Returns True if renewable shares have expired."""
+        if not self.has_renewable_shares or not self.shares_expire_at:
+            return False
+        return self.shares_expire_at <= timezone.now()
+
+    @property
+    def days_until_share_expiry(self):
+        """Days remaining until shares expire, or None if not renewable."""
+        if not self.has_renewable_shares or not self.shares_expire_at:
+            return None
+        delta = self.shares_expire_at - timezone.now()
+        return max(0, delta.days)
+
 
 class FounderShareAdjustment(models.Model):
-    """Incremental share allocations granted over time."""
+    """Incremental share allocations granted over time, with a mandatory time frame."""
 
     founder = models.ForeignKey(
         FounderProfile,
@@ -250,6 +302,12 @@ class FounderShareAdjustment(models.Model):
         on_delete=models.SET_NULL,
         related_name='founder_share_adjustments_added',
     )
+    # Time frame: shares are locked until expires_at, then auto-removed
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When this share allocation expires and is automatically removed.',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -257,7 +315,28 @@ class FounderShareAdjustment(models.Model):
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['founder', 'created_at']),
+            models.Index(fields=['expires_at']),
         ]
 
     def __str__(self):
         return f'{self.founder.user.name} +{self.percentage}%'
+
+    @property
+    def is_expired(self):
+        if not self.expires_at:
+            return False
+        return self.expires_at <= timezone.now()
+
+    @property
+    def is_locked(self):
+        """Share is locked (cannot be edited/deleted) until its time frame expires."""
+        if not self.expires_at:
+            return False
+        return self.expires_at > timezone.now()
+
+    @property
+    def days_until_expiry(self):
+        if not self.expires_at:
+            return None
+        delta = self.expires_at - timezone.now()
+        return max(0, delta.days)

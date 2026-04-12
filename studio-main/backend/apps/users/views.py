@@ -5,7 +5,9 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Count
 from django.db import transaction
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema
+from datetime import timedelta
 import logging
 
 from .serializers import (
@@ -273,7 +275,7 @@ class FounderProfileViewSet(viewsets.GenericViewSet):
     lookup_field = 'pk'
 
     def get_permissions(self):
-        if self.action in ['create', 'partial_update', 'destroy', 'add_shares']:
+        if self.action in ['create', 'partial_update', 'destroy', 'add_shares', 'renew_shares']:
             permission_classes = [IsPrimaryFounder]
         else:
             permission_classes = [IsAuthenticated]
@@ -328,12 +330,68 @@ class FounderProfileViewSet(viewsets.GenericViewSet):
         founder = self.get_object()
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        duration_days = serializer.validated_data['duration_days']
+        expires_at = timezone.now() + timedelta(days=duration_days)
         FounderShareAdjustment.objects.create(
             founder=founder,
             percentage=serializer.validated_data['percentage'],
             note=serializer.validated_data.get('note', ''),
             added_by=request.user,
+            expires_at=expires_at,
         )
+        founder.refresh_from_db()
+        response_serializer = FounderProfileSerializer(founder, context={'request': request})
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsPrimaryFounder])
+    @transaction.atomic
+    def renew_shares(self, request, pk=None):
+        """Renew a founder's share period. Reactivates deactivated founders."""
+        founder = self.get_object()
+        if not founder.has_renewable_shares:
+            return Response(
+                {'detail': 'This founder does not have renewable shares.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        founder.shares_expire_at = timezone.now() + timedelta(days=founder.share_renewal_period_days)
+        founder.save(update_fields=['shares_expire_at'])
+        # Reactivate the user account if it was deactivated due to expired shares
+        if not founder.user.is_active:
+            founder.user.is_active = True
+            founder.user.save(update_fields=['is_active'])
+        founder.refresh_from_db()
+        response_serializer = FounderProfileSerializer(founder, context={'request': request})
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['delete'], permission_classes=[IsPrimaryFounder])
+    @transaction.atomic
+    def remove_share_adjustment(self, request, pk=None):
+        """Remove a specific share adjustment only if it has expired (time frame passed)."""
+        founder = self.get_object()
+        adjustment_id = request.query_params.get('adjustment_id')
+        if not adjustment_id:
+            return Response(
+                {'detail': 'adjustment_id query parameter is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            adjustment = founder.share_adjustments.get(id=adjustment_id)
+        except FounderShareAdjustment.DoesNotExist:
+            return Response(
+                {'detail': 'Share adjustment not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if adjustment.is_locked:
+            return Response(
+                {
+                    'detail': (
+                        f'This share allocation is locked until {adjustment.expires_at.strftime("%Y-%m-%d")}. '
+                        'Shares can only be edited or removed after the time frame expires.'
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        adjustment.delete()
         founder.refresh_from_db()
         response_serializer = FounderProfileSerializer(founder, context={'request': request})
         return Response(response_serializer.data, status=status.HTTP_200_OK)

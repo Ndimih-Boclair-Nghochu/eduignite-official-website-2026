@@ -18,6 +18,9 @@ export const API = {
     FOUNDERS: '/users/founders/',
     FOUNDER_DETAIL: (id: string) => `/users/founders/${id}/`,
     ADD_FOUNDER_SHARES: (id: string) => `/users/founders/${id}/add_shares/`,
+    RENEW_FOUNDER_SHARES: (id: string) => `/users/founders/${id}/renew_shares/`,
+    REMOVE_SHARE_ADJUSTMENT: (founderId: string, adjustmentId: string) =>
+      `/users/founders/${founderId}/remove_share_adjustment/?adjustment_id=${adjustmentId}`,
     BY_SCHOOL: (schoolId: string) => `/users/by_school/?school_id=${schoolId}`,
     DETAIL: (id: string) => `/users/${id}/`,
     TOGGLE_LICENSE: (id: string) => `/users/${id}/toggle_license/`,

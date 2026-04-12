@@ -1,10 +1,12 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema_serializer, OpenApiExample
+from datetime import timedelta
 import uuid
 
-from .models import FounderProfile, FounderShareAdjustment
+from .models import FounderProfile, FounderShareAdjustment, FounderAccessLevel
 
 User = get_user_model()
 
@@ -284,6 +286,9 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
 
 class FounderShareAdjustmentSerializer(serializers.ModelSerializer):
     added_by_name = serializers.CharField(source='added_by.name', read_only=True)
+    is_expired = serializers.SerializerMethodField()
+    is_locked = serializers.SerializerMethodField()
+    days_until_expiry = serializers.SerializerMethodField()
 
     class Meta:
         model = FounderShareAdjustment
@@ -291,9 +296,22 @@ class FounderShareAdjustmentSerializer(serializers.ModelSerializer):
             'id',
             'percentage',
             'note',
+            'expires_at',
+            'is_expired',
+            'is_locked',
+            'days_until_expiry',
             'created_at',
             'added_by_name',
         ]
+
+    def get_is_expired(self, obj):
+        return obj.is_expired
+
+    def get_is_locked(self, obj):
+        return obj.is_locked
+
+    def get_days_until_expiry(self, obj):
+        return obj.days_until_expiry
 
 
 class FounderProfileSerializer(serializers.ModelSerializer):
@@ -308,6 +326,8 @@ class FounderProfileSerializer(serializers.ModelSerializer):
     avatar = serializers.URLField(source='user.avatar', read_only=True, allow_null=True)
     additional_share_percentage = serializers.SerializerMethodField()
     total_share_percentage = serializers.SerializerMethodField()
+    is_share_expired = serializers.SerializerMethodField()
+    days_until_share_expiry = serializers.SerializerMethodField()
     share_adjustments = FounderShareAdjustmentSerializer(many=True, read_only=True)
 
     class Meta:
@@ -329,6 +349,14 @@ class FounderProfileSerializer(serializers.ModelSerializer):
             'is_primary_founder',
             'can_be_removed',
             'is_active',
+            # Renewable shares
+            'has_renewable_shares',
+            'share_renewal_period_days',
+            'shares_expire_at',
+            'is_share_expired',
+            'days_until_share_expiry',
+            # Access level
+            'access_level',
             'share_adjustments',
             'created_at',
             'updated_at',
@@ -340,6 +368,12 @@ class FounderProfileSerializer(serializers.ModelSerializer):
     def get_total_share_percentage(self, obj):
         return f'{obj.total_share_percentage:.2f}'
 
+    def get_is_share_expired(self, obj):
+        return obj.is_share_expired
+
+    def get_days_until_share_expiry(self, obj):
+        return obj.days_until_share_expiry
+
 
 class FounderProfileCreateSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=255)
@@ -350,13 +384,40 @@ class FounderProfileCreateSerializer(serializers.Serializer):
     founder_title = serializers.CharField(max_length=255)
     primary_share_percentage = serializers.DecimalField(max_digits=6, decimal_places=2)
 
+    # Renewable shares governance (CEO/CTO decision)
+    has_renewable_shares = serializers.BooleanField(default=False)
+    share_renewal_period_days = serializers.IntegerField(
+        min_value=1,
+        default=365,
+        required=False,
+        help_text='Days in the renewal period. Required when has_renewable_shares=True.',
+    )
+
+    # Activity permission level
+    access_level = serializers.ChoiceField(
+        choices=[c[0] for c in FounderAccessLevel.choices],
+        default=FounderAccessLevel.FULL,
+    )
+
     def validate_primary_share_percentage(self, value):
         if value <= 0:
             raise serializers.ValidationError('Primary share percentage must be greater than zero.')
         return value
 
+    def validate(self, data):
+        if data.get('has_renewable_shares') and not data.get('share_renewal_period_days'):
+            raise serializers.ValidationError(
+                {'share_renewal_period_days': 'Renewal period in days is required when has_renewable_shares is True.'}
+            )
+        return data
+
     def create(self, validated_data):
-        request = self.context['request']
+        has_renewable = validated_data.get('has_renewable_shares', False)
+        renewal_days = validated_data.get('share_renewal_period_days', 365)
+        shares_expire_at = None
+        if has_renewable:
+            shares_expire_at = timezone.now() + timedelta(days=renewal_days)
+
         matricule = self._generate_founder_matricule(validated_data['role'])
         user = User.objects.create_user(
             matricule=matricule,
@@ -375,6 +436,10 @@ class FounderProfileCreateSerializer(serializers.Serializer):
             primary_share_percentage=validated_data['primary_share_percentage'],
             is_primary_founder=False,
             can_be_removed=True,
+            has_renewable_shares=has_renewable,
+            share_renewal_period_days=renewal_days,
+            shares_expire_at=shares_expire_at,
+            access_level=validated_data.get('access_level', FounderAccessLevel.FULL),
         )
         return profile
 
@@ -403,6 +468,10 @@ class FounderProfileUpdateSerializer(serializers.Serializer):
     founder_title = serializers.CharField(max_length=255, required=False)
     primary_share_percentage = serializers.DecimalField(max_digits=6, decimal_places=2, required=False)
     is_active = serializers.BooleanField(required=False)
+    access_level = serializers.ChoiceField(
+        choices=[c[0] for c in FounderAccessLevel.choices],
+        required=False,
+    )
 
     def validate_primary_share_percentage(self, value):
         if value <= 0:
@@ -426,6 +495,8 @@ class FounderProfileUpdateSerializer(serializers.Serializer):
             instance.founder_title = validated_data['founder_title']
         if 'primary_share_percentage' in validated_data and not instance.is_primary_founder:
             instance.primary_share_percentage = validated_data['primary_share_percentage']
+        if 'access_level' in validated_data:
+            instance.access_level = validated_data['access_level']
         instance.save()
         return instance
 
@@ -433,6 +504,10 @@ class FounderProfileUpdateSerializer(serializers.Serializer):
 class FounderShareCreateSerializer(serializers.Serializer):
     percentage = serializers.DecimalField(max_digits=6, decimal_places=2)
     note = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    duration_days = serializers.IntegerField(
+        min_value=1,
+        help_text='Number of days until this share allocation expires and is automatically removed.',
+    )
 
     def validate_percentage(self, value):
         if value <= 0:

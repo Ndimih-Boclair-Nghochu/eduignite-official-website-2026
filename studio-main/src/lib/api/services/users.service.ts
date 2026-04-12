@@ -100,6 +100,18 @@ export const usersService = {
     return data;
   },
 
+  async renewFounderShares(id: string): Promise<FounderProfile> {
+    const { data } = await apiClient.post(API.USERS.RENEW_FOUNDER_SHARES(id));
+    return data;
+  },
+
+  async removeShareAdjustment(founderId: string, adjustmentId: string): Promise<FounderProfile> {
+    const { data } = await apiClient.delete(
+      API.USERS.REMOVE_SHARE_ADJUSTMENT(founderId, adjustmentId)
+    );
+    return data;
+  },
+
   async deleteFounder(id: string): Promise<void> {
     await apiClient.delete(API.USERS.FOUNDER_DETAIL(id));
   },
