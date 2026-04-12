@@ -154,6 +154,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return f'{self.matricule} - {self.name}'
 
+    def get_full_name(self):
+        return self.name
+
+    def get_short_name(self):
+        return self.name.split()[0] if self.name else self.matricule
+
     @property
     def is_platform_executive(self):
         """Check if user is a platform executive."""
