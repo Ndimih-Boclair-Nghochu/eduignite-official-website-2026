@@ -4,7 +4,7 @@ from .models import LiveClass, LiveClassEnrollment
 
 class LiveClassSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.name', read_only=True)
-    teacher_avatar = serializers.ImageField(source='teacher.avatar', read_only=True)
+    teacher_avatar = serializers.URLField(source='teacher.avatar', read_only=True, allow_null=True)
     subject_display = serializers.SerializerMethodField()
     end_time = serializers.DateTimeField(read_only=True)
     is_live_now = serializers.BooleanField(read_only=True)
@@ -51,7 +51,7 @@ class LiveClassCreateSerializer(serializers.ModelSerializer):
 
 class LiveClassEnrollmentSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='student.name', read_only=True)
-    student_avatar = serializers.ImageField(source='student.avatar', read_only=True)
+    student_avatar = serializers.URLField(source='student.avatar', read_only=True, allow_null=True)
 
     class Meta:
         model = LiveClassEnrollment

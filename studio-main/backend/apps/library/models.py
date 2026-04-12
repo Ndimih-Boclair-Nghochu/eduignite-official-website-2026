@@ -36,7 +36,7 @@ class Book(TimeStampedModel):
     total_copies = models.IntegerField(default=1)
     available_copies = models.IntegerField(default=1)
     description = models.TextField(blank=True)
-    cover_image = models.ImageField(upload_to='books/covers/', null=True, blank=True)
+    cover_image = models.URLField(max_length=2000, null=True, blank=True)
     location = models.CharField(max_length=255, blank=True, help_text="Shelf/row information")
     is_active = models.BooleanField(default=True)
 

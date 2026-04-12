@@ -305,7 +305,7 @@ class FounderProfileSerializer(serializers.ModelSerializer):
     whatsapp = serializers.CharField(source='user.whatsapp', read_only=True)
     role = serializers.CharField(source='user.role', read_only=True)
     is_active = serializers.BooleanField(source='user.is_active', read_only=True)
-    avatar = serializers.ImageField(source='user.avatar', read_only=True)
+    avatar = serializers.URLField(source='user.avatar', read_only=True, allow_null=True)
     additional_share_percentage = serializers.SerializerMethodField()
     total_share_percentage = serializers.SerializerMethodField()
     share_adjustments = FounderShareAdjustmentSerializer(many=True, read_only=True)

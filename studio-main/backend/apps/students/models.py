@@ -5,9 +5,8 @@ from django.utils.translation import gettext_lazy as _
 from django_extensions.db.models import TimeStampedModel
 import uuid
 import qrcode
+import base64
 from io import BytesIO
-from django.core.files.base import ContentFile
-from PIL import Image
 
 
 class Student(TimeStampedModel):
@@ -50,7 +49,7 @@ class Student(TimeStampedModel):
     annual_average = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True,
                                          validators=[MinValueValidator(0), MaxValueValidator(20)])
     is_on_honour_roll = models.BooleanField(default=False)
-    qr_code = models.ImageField(upload_to='student_qr_codes/', null=True, blank=True)
+    qr_code = models.URLField(max_length=5000, null=True, blank=True)
 
     class Meta:
         ordering = ['student_class', 'user__name']
@@ -63,21 +62,19 @@ class Student(TimeStampedModel):
         return f"{self.user.get_full_name()} ({self.admission_number})"
 
     def generate_qr_code(self):
-        """Generate and save QR code for student ID"""
+        """Generate QR code and store as a base64 data URL."""
         qr_data = f"student:{self.admission_number}:{self.user.email}"
         qr = qrcode.QRCode(version=1, box_size=10, border=5)
         qr.add_data(qr_data)
         qr.make(fit=True)
 
         img = qr.make_image(fill_color="black", back_color="white")
-
-        # Save to file
-        file_name = f"student_qr_{self.admission_number}.png"
-        file_path = BytesIO()
-        img.save(file_path, format='PNG')
-        file_path.seek(0)
-
-        self.qr_code.save(file_name, ContentFile(file_path.read()), save=True)
+        buffer = BytesIO()
+        img.save(buffer, format='PNG')
+        buffer.seek(0)
+        encoded = base64.b64encode(buffer.read()).decode('utf-8')
+        self.qr_code = f"data:image/png;base64,{encoded}"
+        self.save(update_fields=['qr_code'])
 
 
 class ParentStudentLink(TimeStampedModel):

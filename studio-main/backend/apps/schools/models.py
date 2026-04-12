@@ -40,8 +40,8 @@ class School(TimeStampedModel):
         related_name='school_principal',
     )
     motto = models.CharField(max_length=255, blank=True)
-    logo = models.ImageField(upload_to='school_logos/', null=True, blank=True)
-    banner = models.ImageField(upload_to='school_banners/', null=True, blank=True)
+    logo = models.URLField(max_length=2000, null=True, blank=True)
+    banner = models.URLField(max_length=2000, null=True, blank=True)
     description = models.TextField(blank=True)
     location = models.CharField(max_length=255)
     region = models.CharField(
