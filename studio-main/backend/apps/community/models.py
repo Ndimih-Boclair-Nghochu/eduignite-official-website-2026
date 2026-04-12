@@ -40,12 +40,12 @@ class Testimony(TimeStampedModel):
 class CommunityBlog(TimeStampedModel):
     author = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name='community_blogs')
     title = models.CharField(max_length=255)
-    image = models.ImageField(upload_to='community/blogs/', null=True, blank=True)
+    image = models.URLField(max_length=2000, null=True, blank=True)
     paragraphs = models.JSONField(default=list)
     is_published = models.BooleanField(default=False)
     published_at = models.DateTimeField(null=True, blank=True)
     view_count = models.IntegerField(default=0)
-    slug = models.SlugField(unique=True)
+    slug = models.SlugField(max_length=300, unique=True)
 
     class Meta:
         ordering = ['-published_at', '-created_at']
@@ -59,7 +59,13 @@ class CommunityBlog(TimeStampedModel):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = slugify(self.title)
+            base_slug = slugify(self.title)[:280]
+            slug = base_slug
+            counter = 1
+            while CommunityBlog.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
 

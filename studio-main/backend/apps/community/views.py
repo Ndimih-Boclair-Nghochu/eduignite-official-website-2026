@@ -140,12 +140,12 @@ class CommunityBlogViewSet(viewsets.ModelViewSet):
         serializer = CommunityBlogDetailSerializer(blog, context={'request': request})
         return Response(serializer.data)
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get', 'post'])
     def view(self, request, pk=None):
         """View a blog and increment view count"""
         blog = self.get_object()
         blog.view_count += 1
-        blog.save()
+        blog.save(update_fields=['view_count'])
 
         serializer = CommunityBlogDetailSerializer(blog)
         return Response(serializer.data)
