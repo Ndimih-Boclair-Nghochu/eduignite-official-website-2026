@@ -1,5 +1,5 @@
-# Converts Student.qr_code from ImageField to URLField so the QR code can be
-# stored as a base64 data URL instead of a locally saved file.
+# Converts Student.qr_code from ImageField to URLField so QR codes are stored
+# as base64 data URLs instead of locally saved files.
 
 from django.db import migrations, models
 
@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('students', '0001_initial'),
+        ('students', '0002_initial'),
     ]
 
     operations = [
