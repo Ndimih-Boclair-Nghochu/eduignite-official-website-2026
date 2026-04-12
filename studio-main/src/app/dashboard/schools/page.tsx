@@ -81,7 +81,7 @@ const useSchools = () => {
     queryFn: async () => {
       return normalizeSchoolList(await schoolsService.getSchools());
     },
-    initialData: [],
+    retry: 2,
   });
 };
 
@@ -131,10 +131,12 @@ const useToggleSchoolStatus = () => {
 };
 
 export default function SchoolsManagementPage() {
-  const { user } = useAuth();
+  const { user, schools: authSchools } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: schools = [] } = useSchools();
+  const { data: fetchedSchools, isLoading: schoolsLoading, isError: schoolsError } = useSchools();
+  // Fall back to auth-context schools if the query hasn't resolved yet
+  const schools = fetchedSchools ?? authSchools ?? [];
   const { data: schoolStats = {} } = useSchoolStats();
   const createSchoolMutation = useCreateSchool();
   const toggleSchoolStatusMutation = useToggleSchoolStatus();
@@ -278,8 +280,8 @@ export default function SchoolsManagementPage() {
                 <Plus className="w-5 h-5" /> Provision New Node
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
-              <DialogHeader className="bg-primary p-8 text-white relative">
+            <DialogContent className="sm:max-w-md rounded-[2.5rem] p-0 border-none shadow-2xl flex flex-col max-h-[92dvh]">
+              <DialogHeader className="bg-primary p-8 text-white relative shrink-0">
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-white/10 rounded-2xl">
                     <Building2 className="w-8 h-8 text-secondary" />
@@ -293,7 +295,7 @@ export default function SchoolsManagementPage() {
                   <X className="w-6 h-6" />
                 </Button>
               </DialogHeader>
-              <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto">
+              <div className="p-6 sm:p-8 space-y-5 overflow-y-auto flex-1 min-h-0">
                 <div className="space-y-2">
                   <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Full School Name</Label>
                   <Input 
@@ -303,7 +305,7 @@ export default function SchoolsManagementPage() {
                     placeholder="e.g. Government Bilingual High School Deido" 
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Short Name (Code)</Label>
                     <Input 
@@ -410,7 +412,7 @@ export default function SchoolsManagementPage() {
                   </div>
                 </div>
               </div>
-              <DialogFooter className="bg-accent/20 p-6 border-t border-accent">
+              <DialogFooter className="bg-accent/20 p-4 sm:p-6 border-t border-accent shrink-0">
                 <Button onClick={handleSaveSchool} className="w-full h-14 rounded-2xl shadow-lg font-black uppercase tracking-widest text-xs gap-3 bg-primary text-white hover:bg-primary/90" disabled={isProcessing}>
                   {isProcessing ? (
                     <>
@@ -434,6 +436,20 @@ export default function SchoolsManagementPage() {
         <Search className="w-4 h-4 text-muted-foreground ml-2" />
         <Input placeholder="Search institutions by name, id or domain..." className="border-none bg-transparent focus-visible:ring-0" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
       </div>
+
+      {schoolsLoading && !schools.length && (
+        <div className="flex items-center justify-center py-20 gap-3 text-muted-foreground">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          <span className="font-bold text-sm">Loading institutional nodes…</span>
+        </div>
+      )}
+
+      {schoolsError && !schools.length && (
+        <div className="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">
+          <Building2 className="w-10 h-10 text-primary/20" />
+          <p className="font-bold text-sm">Could not load schools. Please refresh.</p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {filteredSchools.map((school) => (
@@ -528,8 +544,8 @@ export default function SchoolsManagementPage() {
 
       {/* NODE CONFIGURATION DIALOG */}
       <Dialog open={!!managedSchool} onOpenChange={() => setManagedSchool(null)}>
-        <DialogContent className="sm:max-w-xl rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
-          <DialogHeader className={cn("p-10 text-white relative", managedSchool?.status === 'Active' ? "bg-primary" : "bg-destructive/80")}>
+        <DialogContent className="sm:max-w-xl rounded-[2.5rem] p-0 border-none shadow-2xl flex flex-col max-h-[92dvh]">
+          <DialogHeader className={cn("p-8 sm:p-10 text-white relative shrink-0", managedSchool?.status === 'Active' ? "bg-primary" : "bg-destructive/80")}>
             <div className="flex items-center gap-6">
               <Avatar className="h-20 w-20 rounded-[1.5rem] border-4 border-white/20 shadow-xl shrink-0">
                 <AvatarImage src={managedSchool?.logo} className="object-contain p-2 bg-white" />
@@ -544,7 +560,7 @@ export default function SchoolsManagementPage() {
               <X className="w-6 h-6" />
             </Button>
           </DialogHeader>
-          <div className="p-10 space-y-8 max-h-[70vh] overflow-y-auto">
+          <div className="p-6 sm:p-10 space-y-8 overflow-y-auto flex-1 min-h-0">
             <div className="bg-primary/5 p-6 rounded-[2rem] border border-primary/10 space-y-6">
                <h3 className="font-black text-primary uppercase text-xs tracking-[0.2em] border-b pb-2 opacity-40">Administrative Interventions</h3>
                <div className="grid grid-cols-1 gap-4">
@@ -576,8 +592,8 @@ export default function SchoolsManagementPage() {
 
       {/* NODE ACTIVATION RECEIPT (EDUIGNITE OFFICIAL) */}
       <Dialog open={!!onboardingSuccess} onOpenChange={() => setOnboardingSuccess(null)}>
-        <DialogContent className="sm:max-w-2xl p-0 border-none shadow-2xl rounded-[2.5rem] overflow-hidden">
-          <DialogHeader className="bg-primary p-8 text-white no-print relative">
+        <DialogContent className="sm:max-w-2xl p-0 border-none shadow-2xl rounded-[2.5rem] flex flex-col max-h-[92dvh]">
+          <DialogHeader className="bg-primary p-8 text-white no-print relative shrink-0">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <div className="p-3 bg-white/10 rounded-2xl text-secondary">
@@ -594,7 +610,7 @@ export default function SchoolsManagementPage() {
             </Button>
           </DialogHeader>
 
-          <div className="bg-muted p-6 md:p-10 print:p-0 print:bg-white overflow-y-auto max-h-[70vh]">
+          <div className="bg-muted p-6 md:p-10 print:p-0 print:bg-white overflow-y-auto flex-1 min-h-0">
             <div id="activation-receipt" className="bg-white p-8 md:p-12 border-2 border-black shadow-sm relative flex flex-col space-y-10 font-serif text-black print:border-none print:shadow-none">
                
                {/* EduIgnite Platform Header */}
