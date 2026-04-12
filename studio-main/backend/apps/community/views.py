@@ -118,7 +118,13 @@ class CommunityBlogViewSet(viewsets.ModelViewSet):
         return super().check_permissions(request)
 
     def perform_create(self, serializer):
-        serializer.save(author=self.request.user)
+        publish_kwargs = {}
+        if is_platform_executive(self.request.user):
+            publish_kwargs = {
+                'is_published': True,
+                'published_at': timezone.now(),
+            }
+        serializer.save(author=self.request.user, **publish_kwargs)
 
     @action(detail=True, methods=['post'])
     def publish(self, request, pk=None):
@@ -131,7 +137,8 @@ class CommunityBlogViewSet(viewsets.ModelViewSet):
         blog.published_at = timezone.now()
         blog.save()
 
-        return Response({'status': 'blog published'})
+        serializer = CommunityBlogDetailSerializer(blog, context={'request': request})
+        return Response(serializer.data)
 
     @action(detail=True, methods=['get'])
     def view(self, request, pk=None):

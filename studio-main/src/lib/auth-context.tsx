@@ -650,7 +650,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       image: b.image,
       paragraphs: b.paragraphs,
     });
-    setCommunityBlogs((prev) => [mapCommunityBlogRecord(created), ...prev]);
+    const published =
+      (created as any)?.is_published || (created as any)?.isPublished
+        ? created
+        : await communityService.publishBlog((created as any).id);
+    setCommunityBlogs((prev) => [mapCommunityBlogRecord(published), ...prev]);
   };
 
   const deleteCommunityBlog = async (id: string) => {
