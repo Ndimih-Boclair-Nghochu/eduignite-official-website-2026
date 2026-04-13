@@ -530,3 +530,56 @@ class AIInsightViewSet(viewsets.ReadOnlyModelViewSet):
             'status': 'Insights generation triggered',
             'message': _('Weekly insights are being generated. Check back shortly.')
         })
+
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def direct_chat(request):
+    """
+    Synchronous direct-chat endpoint using Groq API.
+    Returns an immediate AI response (no Celery task).
+    """
+    from .utils import call_groq_api
+
+    message = (request.data.get('message') or '').strip()
+    if not message:
+        return Response({'error': 'message is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Optional: include conversation history for context
+    history = request.data.get('history', [])
+
+    # Build messages list
+    messages = []
+    for entry in history[-10:]:  # Last 10 messages for context window
+        role = entry.get('role', 'user')
+        content = entry.get('content', '')
+        if role in ('user', 'assistant') and content:
+            messages.append({'role': role, 'content': content})
+
+    # Build the prompt incorporating history as context text
+    if messages:
+        history_text = '\n'.join(
+            f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content']}"
+            for m in messages
+        )
+        full_prompt = f"Previous conversation:\n{history_text}\n\nUser: {message}"
+    else:
+        full_prompt = message
+
+    result = call_groq_api(full_prompt)
+
+    if result['success']:
+        return Response({
+            'reply': result['response'],
+            'tokens_used': result['tokens_used'],
+            'processing_time_ms': result['processing_time_ms'],
+        })
+    else:
+        return Response(
+            {'error': result.get('error', 'AI request failed')},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE
+        )

@@ -12,10 +12,17 @@ class FeedbackResponseSerializer(serializers.ModelSerializer):
 
 class FeedbackListSerializer(serializers.ModelSerializer):
     sender_name = serializers.CharField(source='sender.get_full_name', read_only=True)
+    sender_role = serializers.CharField(source='sender.role', read_only=True)
+    sender_avatar = serializers.SerializerMethodField()
+    message = serializers.CharField(read_only=True)
 
     class Meta:
         model = Feedback
-        fields = ['id', 'subject', 'sender_name', 'status', 'priority', 'created_at']
+        fields = ['id', 'subject', 'message', 'sender_name', 'sender_role', 'sender_avatar',
+                  'status', 'priority', 'created_at']
+
+    def get_sender_avatar(self, obj):
+        return obj.sender.avatar or None
 
 
 class FeedbackDetailSerializer(serializers.ModelSerializer):

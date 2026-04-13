@@ -161,13 +161,18 @@ class UserViewSet(viewsets.ModelViewSet):
             )
         return super().destroy(request, *args, **kwargs)
 
-    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    @action(detail=False, methods=['get', 'patch'], permission_classes=[IsAuthenticated])
     @extend_schema(
-        description='Get current authenticated user profile',
+        description='Get or update current authenticated user profile',
         tags=['Users'],
     )
     def me(self, request):
-        """Return current user's profile."""
+        """Return or update current user's profile."""
+        if request.method == 'PATCH':
+            serializer = ProfileUpdateSerializer(request.user, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(UserDetailSerializer(request.user).data)
         serializer = UserDetailSerializer(request.user)
         return Response(serializer.data)
 

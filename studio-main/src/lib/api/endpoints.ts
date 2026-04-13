@@ -193,5 +193,6 @@ export const API = {
     INSIGHTS: '/ai/insights/',
     INSIGHT_DETAIL: (id: string) => `/ai/insights/${id}/`,
     GENERATE_INSIGHTS: '/ai/insights/generate-insights/',
+    DIRECT_CHAT: '/ai/chat/',
   },
 } as const;

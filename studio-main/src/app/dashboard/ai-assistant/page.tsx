@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useI18n } from "@/lib/i18n-context";
 import {
@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AIRequest, AIInsight } from "@/types/ai";
+import { aiService } from "@/lib/api/services/ai.service";
 
 type RequestType = "study_plan" | "grade_analysis" | "exam_prep" | "parent_report" | "general";
 
@@ -86,7 +87,7 @@ export default function AiAssistantPage() {
 
   // Local state
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState("history");
+  const [activeTab, setActiveTab] = useState("chat");
   const [requestType, setRequestType] = useState<RequestType>("study_plan");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -103,6 +104,39 @@ export default function AiAssistantPage() {
   // Child selector for parent report
   const [selectedChildId, setSelectedChildId] = useState<string>("");
   const currentStudentId = user?.id ?? "";
+
+  // Direct chat state
+  type ChatMessage = { role: "user" | "assistant"; content: string; ts: number };
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollChatToBottom = () => {
+    setTimeout(() => {
+      if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }, 80);
+  };
+
+  const handleChatSend = useCallback(async () => {
+    const msg = chatInput.trim();
+    if (!msg || isChatLoading) return;
+    setChatInput("");
+    const userMsg: ChatMessage = { role: "user", content: msg, ts: Date.now() };
+    setChatMessages((prev) => [...prev, userMsg]);
+    scrollChatToBottom();
+    setIsChatLoading(true);
+    try {
+      const history = chatMessages.slice(-10).map((m) => ({ role: m.role, content: m.content }));
+      const result = await aiService.directChat(msg, history);
+      setChatMessages((prev) => [...prev, { role: "assistant", content: result.reply, ts: Date.now() }]);
+      scrollChatToBottom();
+    } catch {
+      setChatMessages((prev) => [...prev, { role: "assistant", content: "Sorry, I couldn't process your request. Please try again.", ts: Date.now() }]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  }, [chatInput, chatMessages, isChatLoading]);
 
   // Get requests list
   const requests = requestsResponse?.results ?? [];
@@ -619,7 +653,10 @@ export default function AiAssistantPage() {
         onValueChange={setActiveTab}
         className="flex-1 flex flex-col min-h-0"
       >
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-3">
+        <TabsList className="grid w-full grid-cols-3 md:grid-cols-4">
+          <TabsTrigger value="chat" className="flex items-center gap-1.5">
+            <MessageSquare className="w-3.5 h-3.5" /> Chat
+          </TabsTrigger>
           <TabsTrigger value="history">Request History</TabsTrigger>
           <TabsTrigger value="new">New Request</TabsTrigger>
           {isExecutive && (
@@ -628,6 +665,70 @@ export default function AiAssistantPage() {
             </TabsTrigger>
           )}
         </TabsList>
+
+        {/* Direct Chat Tab */}
+        <TabsContent value="chat" className="flex-1 flex flex-col min-h-0">
+          <Card className="flex-1 flex flex-col border-none shadow-lg min-h-[60vh]">
+            <CardHeader className="border-b shrink-0">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Sparkles className="w-5 h-5 text-primary" /> EduIgnite AI
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Powered by Groq — ask anything about education, school management, or student progress.
+              </CardDescription>
+            </CardHeader>
+            <ScrollArea className="flex-1 p-4" ref={chatScrollRef as any}>
+              {chatMessages.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-40 gap-3 text-center">
+                  <Sparkles className="w-10 h-10 text-primary/20" />
+                  <p className="text-sm text-muted-foreground">Start a conversation with the EduIgnite AI assistant.</p>
+                </div>
+              )}
+              <div className="space-y-4">
+                {chatMessages.map((msg) => (
+                  <div key={msg.ts} className={cn("flex", msg.role === "user" ? "justify-end" : "justify-start")}>
+                    <div className={cn(
+                      "max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap",
+                      msg.role === "user"
+                        ? "bg-primary text-white rounded-br-sm"
+                        : "bg-accent/50 text-primary rounded-bl-sm border border-primary/10"
+                    )}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+                {isChatLoading && (
+                  <div className="flex justify-start">
+                    <div className="px-4 py-3 rounded-2xl bg-accent/50 border border-primary/10 flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-primary/40" />
+                      <span className="text-xs text-muted-foreground">Thinking…</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+            <div className="p-3 border-t shrink-0">
+              <div className="flex gap-2">
+                <Input
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleChatSend(); } }}
+                  placeholder="Ask anything..."
+                  className="flex-1 bg-accent/30 border-none rounded-2xl h-11 text-sm"
+                  disabled={isChatLoading}
+                />
+                <Button
+                  onClick={handleChatSend}
+                  disabled={!chatInput.trim() || isChatLoading}
+                  size="icon"
+                  className="h-11 w-11 rounded-2xl bg-primary text-white shadow-lg shrink-0"
+                >
+                  {isChatLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </TabsContent>
 
         {/* History Tab */}
         <TabsContent value="history" className="flex-1 flex flex-col min-h-0 gap-4">
