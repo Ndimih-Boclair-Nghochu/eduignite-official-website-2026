@@ -1,6 +1,56 @@
+import re
 from django.db import models
 from django.utils import timezone
 from django.core.validators import RegexValidator
+
+
+# Words to skip when building the school name abbreviation
+_SKIP_WORDS = {
+    'a', 'an', 'the', 'of', 'and', 'or', 'in', 'at', 'by', 'for',
+    'to', 'du', 'de', 'des', 'le', 'la', 'les', 'et', 'ou',
+}
+
+
+def _generate_school_abbreviation(name: str, max_chars: int = 8) -> str:
+    """Return an uppercase abbreviation for a school name.
+
+    Strips punctuation, skips common filler words, and takes the first
+    letter of each remaining word.  Result is capped at *max_chars*.
+    """
+    words = re.sub(r'[^a-zA-Z0-9\s]', '', name).split()
+    initials = ''.join(
+        w[0].upper()
+        for w in words
+        if w.lower() not in _SKIP_WORDS and w
+    )
+    return initials[:max_chars] or name[:max_chars].upper().replace(' ', '')
+
+
+def generate_school_matricule(school_name: str) -> str:
+    """Generate a unique, human-readable matricule from *school_name*.
+
+    Format: ``SCH-<ABBREV>-<NNNN>`` where *ABBREV* is derived from the
+    school name and *NNNN* is a zero-padded sequential counter.
+    """
+    abbrev = _generate_school_abbreviation(school_name)
+    prefix = f'SCH-{abbrev}-'
+
+    # Find the highest existing counter with this prefix
+    last = (
+        School.objects.filter(matricule__startswith=prefix)
+        .order_by('-matricule')
+        .values_list('matricule', flat=True)
+        .first()
+    )
+    if last:
+        try:
+            counter = int(last.rsplit('-', 1)[-1]) + 1
+        except (ValueError, IndexError):
+            counter = 1
+    else:
+        counter = 1
+
+    return f'{prefix}{counter:04d}'
 
 
 class TimeStampedModel(models.Model):
@@ -82,6 +132,12 @@ class School(TimeStampedModel):
     founded_year = models.IntegerField(null=True, blank=True)
     student_count = models.IntegerField(default=0)
     teacher_count = models.IntegerField(default=0)
+    matricule = models.CharField(
+        max_length=50,
+        unique=True,
+        blank=True,
+        help_text='Auto-generated activation matricule based on school name.',
+    )
 
     class Meta:
         verbose_name = 'School'
@@ -92,6 +148,11 @@ class School(TimeStampedModel):
             models.Index(fields=['status']),
             models.Index(fields=['region']),
         ]
+
+    def save(self, *args, **kwargs):
+        if not self.matricule and self.name:
+            self.matricule = generate_school_matricule(self.name)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f'{self.name} ({self.id})'

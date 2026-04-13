@@ -34,6 +34,7 @@ class SchoolListSerializer(serializers.ModelSerializer):
             'student_count',
             'teacher_count',
             'logo',
+            'matricule',
         ]
 
 
@@ -106,6 +107,7 @@ class SchoolDetailSerializer(serializers.ModelSerializer):
             'founded_year',
             'student_count',
             'teacher_count',
+            'matricule',
             'settings',
             'created_at',
             'updated_at',
@@ -142,7 +144,14 @@ class SchoolDetailSerializer(serializers.ModelSerializer):
     ]
 )
 class SchoolCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating schools with validation."""
+    """Serializer for creating schools with validation.
+
+    ``matricule`` is auto-generated from the school name and returned in
+    the response so the principal can use it to activate the school account.
+    ``id`` is optional: when omitted it falls back to the uppercased short_name.
+    """
+
+    matricule = serializers.CharField(read_only=True)
 
     class Meta:
         model = School
@@ -167,15 +176,24 @@ class SchoolCreateSerializer(serializers.ModelSerializer):
             'email',
             'status',
             'founded_year',
+            'matricule',
         ]
+        extra_kwargs = {
+            'id': {'required': False, 'allow_blank': True},
+        }
 
     def validate_id(self, value):
-        """Validate school ID is unique and properly formatted."""
-        if not value:
-            raise serializers.ValidationError('School ID is required.')
-        if len(value) > 50:
+        """Validate and normalise the optional school ID."""
+        if value and len(value) > 50:
             raise serializers.ValidationError('School ID cannot exceed 50 characters.')
-        return value.upper()
+        return value.upper() if value else value
+
+    def validate(self, attrs):
+        # Auto-derive id from short_name when not supplied
+        if not attrs.get('id'):
+            short_name = attrs.get('short_name', '')
+            attrs['id'] = short_name.strip().upper() or attrs['name'][:50].upper()
+        return attrs
 
 
 @extend_schema_serializer(

@@ -84,12 +84,17 @@ class SchoolViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         request=SchoolCreateSerializer,
-        description='Create a new school (Executive only)',
+        description='Create a new school (Executive only). Returns the auto-generated matricule for principal account activation.',
         tags=['Schools'],
     )
     def create(self, request, *args, **kwargs):
-        """Create new school (executives only)."""
-        return super().create(request, *args, **kwargs)
+        """Create new school and return the generated matricule."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        school = serializer.save()
+        response_data = SchoolDetailSerializer(school).data
+        response_data['matricule'] = school.matricule
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
     @extend_schema(
         request=SchoolUpdateSerializer,
