@@ -311,21 +311,86 @@ class PasswordResetRequestView(APIView):
         try:
             user = User.objects.get(email=email)
             from rest_framework_simplejwt.tokens import RefreshToken
+            from django.core.mail import send_mail
+            from django.conf import settings as django_settings
+
             refresh = RefreshToken.for_user(user)
             reset_token = str(refresh.access_token)
 
-            return Response(
-                {
-                    'detail': 'Password reset email sent',
-                    'reset_token': reset_token,
-                },
-                status=status.HTTP_200_OK,
+            # Build the reset URL (frontend handles the /reset-password?token=... route)
+            frontend_url = getattr(django_settings, 'FRONTEND_URL', 'https://eduignite.com')
+            reset_url = f"{frontend_url}/reset-password?token={reset_token}"
+
+            user_name = user.get_full_name() or user.email
+
+            subject = "EduIgnite – Password Reset Request"
+            plain_body = (
+                f"Hello {user_name},\n\n"
+                f"We received a request to reset your EduIgnite password.\n\n"
+                f"Click the link below to set a new password (valid for 5 minutes):\n"
+                f"{reset_url}\n\n"
+                f"If you did not request this, you can safely ignore this email.\n\n"
+                f"— The EduIgnite Team"
             )
+            html_body = f"""
+<!DOCTYPE html>
+<html>
+<body style="font-family:Arial,sans-serif;background:#f4f4f4;margin:0;padding:0;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:40px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+    <tr><td style="background:#1a1a2e;padding:32px;text-align:center;">
+      <h1 style="color:#f5c518;margin:0;font-size:28px;letter-spacing:2px;">EduIgnite</h1>
+      <p style="color:#ffffff80;font-size:12px;margin:6px 0 0;">School Management Platform</p>
+    </td></tr>
+    <tr><td style="padding:40px 48px;">
+      <h2 style="color:#1a1a2e;margin:0 0 16px;">Password Reset Request</h2>
+      <p style="color:#555;line-height:1.6;">Hello <strong>{user_name}</strong>,</p>
+      <p style="color:#555;line-height:1.6;">
+        We received a request to reset the password for your EduIgnite account.
+        Click the button below to set a new password. This link expires in <strong>5 minutes</strong>.
+      </p>
+      <div style="text-align:center;margin:32px 0;">
+        <a href="{reset_url}" style="background:#f5c518;color:#1a1a2e;padding:14px 40px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:15px;display:inline-block;">
+          Reset My Password
+        </a>
+      </div>
+      <p style="color:#999;font-size:13px;line-height:1.6;">
+        If the button doesn't work, copy and paste this link into your browser:<br>
+        <a href="{reset_url}" style="color:#1a1a2e;word-break:break-all;">{reset_url}</a>
+      </p>
+      <hr style="border:none;border-top:1px solid #eee;margin:32px 0;">
+      <p style="color:#bbb;font-size:12px;">
+        If you did not request a password reset, you can safely ignore this email.
+        Your password will remain unchanged.
+      </p>
+    </td></tr>
+    <tr><td style="background:#f8f8f8;padding:20px;text-align:center;">
+      <p style="color:#bbb;font-size:11px;margin:0;">© 2026 EduIgnite · Cameroon · eduignitecmr@gmail.com</p>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+            try:
+                send_mail(
+                    subject=subject,
+                    message=plain_body,
+                    from_email=django_settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[email],
+                    html_message=html_body,
+                    fail_silently=False,
+                )
+                logger.info(f"Password reset email sent to {email}")
+            except Exception as mail_err:
+                logger.error(f"Failed to send password reset email to {email}: {mail_err}")
+
         except User.DoesNotExist:
-            return Response(
-                {'detail': 'If email exists, password reset link sent'},
-                status=status.HTTP_200_OK,
-            )
+            pass  # Don't leak whether the email exists
+
+        # Always return the same response regardless of whether user exists
+        return Response(
+            {'detail': 'If an account with that email exists, a password reset link has been sent.'},
+            status=status.HTTP_200_OK,
+        )
 
 
 class PasswordResetConfirmView(APIView):
@@ -349,9 +414,9 @@ class PasswordResetConfirmView(APIView):
         new_password = serializer.validated_data['new_password']
 
         try:
-            from rest_framework_simplejwt.tokens import RefreshToken
-            refresh = RefreshToken(token)
-            user_id = refresh.get('user_id')
+            from rest_framework_simplejwt.tokens import AccessToken
+            access = AccessToken(token)  # validates signature & expiry
+            user_id = access.get('user_id')
             user = User.objects.get(id=user_id)
 
             user.set_password(new_password)
