@@ -2,6 +2,7 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.filters import SearchFilter, OrderingFilter
+from django.db.models import Q
 from django.utils import timezone
 from .models import Testimony, CommunityBlog, BlogComment
 from .serializers import (
@@ -106,8 +107,10 @@ class CommunityBlogViewSet(viewsets.ModelViewSet):
         if is_platform_executive(user):
             return CommunityBlog.objects.all()
         elif getattr(user, 'is_authenticated', False):
-            queryset = CommunityBlog.objects.filter(is_published=True)
-            return queryset | CommunityBlog.objects.filter(author=user)
+            # Use Q objects — queryset union (|) breaks get_object() filtering
+            return CommunityBlog.objects.filter(
+                Q(is_published=True) | Q(author=user)
+            )
         else:
             return CommunityBlog.objects.filter(is_published=True)
 
