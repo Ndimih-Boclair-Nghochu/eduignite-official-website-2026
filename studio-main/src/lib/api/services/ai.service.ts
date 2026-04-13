@@ -122,4 +122,9 @@ export const aiService = {
     const { data } = await apiClient.post(API.AI.GENERATE_INSIGHTS, {});
     return data;
   },
+
+  async directChat(message: string, history?: { role: string; content: string }[]): Promise<{ reply: string; tokens_used: number; processing_time_ms: number }> {
+    const { data } = await apiClient.post(API.AI.DIRECT_CHAT, { message, history });
+    return data;
+  },
 };

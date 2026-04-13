@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useI18n } from "@/lib/i18n-context";
 import { usePlatformSettings, usePlatformFees, usePublicEvents, useUpdatePlatformSettings, useCreatePublicEvent, useDeletePublicEvent } from "@/lib/hooks";
+import { useQueryClient } from "@tanstack/react-query";
+import { platformService } from "@/lib/api/services/platform.service";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,11 +39,23 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
+const FEE_ROLES = [
+  { role: "STUDENT", label: "Student Access", icon: GraduationCap },
+  { role: "TEACHER", label: "Teacher Licensing", icon: Users },
+  { role: "PARENT", label: "Family Portal", icon: Heart },
+  { role: "BURSAR", label: "Financial Node", icon: Wallet },
+  { role: "LIBRARIAN", label: "Library Node", icon: BookOpen },
+  { role: "SCHOOL_ADMIN", label: "Primary Admin", icon: Building2 },
+] as const;
+
+const TRAINING_ROLES = ["STUDENT", "TEACHER", "PARENT", "SCHOOL_ADMIN", "SUB_ADMIN", "BURSAR", "LIBRARIAN"] as const;
+
 export default function PlatformSettingsPage() {
   const { user } = useAuth();
   const { t } = useI18n();
   const { toast } = useToast();
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
 
   const { data: settings, isLoading: settingsLoading } = usePlatformSettings();
   const { data: feesResponse } = usePlatformFees();
@@ -51,8 +65,8 @@ export default function PlatformSettingsPage() {
   const createEventMutation = useCreatePublicEvent();
   const deleteEventMutation = useDeletePublicEvent();
 
-  const fees = feesResponse?.results ?? [];
-  const events = eventsResponse?.results ?? [];
+  const fees: any[] = (feesResponse as any)?.results ?? (Array.isArray(feesResponse) ? feesResponse : []);
+  const events: any[] = (eventsResponse as any)?.results ?? (Array.isArray(eventsResponse) ? eventsResponse : []);
 
   const [formData, setFormData] = useState({
     platformName: "",
@@ -61,6 +75,14 @@ export default function PlatformSettingsPage() {
     honourRollThreshold: 0,
     maintenanceMode: false,
   });
+
+  // Editable fee amounts keyed by role
+  const [feeAmounts, setFeeAmounts] = useState<Record<string, string>>({});
+  const [isSavingFees, setIsSavingFees] = useState(false);
+
+  // Editable tutorial links keyed by role
+  const [tutorialEdits, setTutorialEdits] = useState<Record<string, string>>({});
+  const [isSavingTutorials, setIsSavingTutorials] = useState(false);
 
   const [newEvent, setNewEvent] = useState({
     title: "",
@@ -74,15 +96,63 @@ export default function PlatformSettingsPage() {
 
   useEffect(() => {
     if (!settings) return;
-
     setFormData({
       platformName: settings.name || "",
       platformLogo: settings.logo || "",
-      paymentDeadline: settings.payment_deadline || "",
-      honourRollThreshold: settings.honour_roll_threshold || 0,
-      maintenanceMode: settings.maintenance_mode || false,
+      paymentDeadline: (settings as any).payment_deadline || "",
+      honourRollThreshold: (settings as any).honour_roll_threshold || 0,
+      maintenanceMode: (settings as any).maintenance_mode || false,
     });
+    // Pre-fill tutorial links from settings
+    const links = (settings as any).tutorial_links || {};
+    const linksState: Record<string, string> = {};
+    TRAINING_ROLES.forEach((role) => { linksState[role] = links[role] || ""; });
+    setTutorialEdits(linksState);
   }, [settings]);
+
+  useEffect(() => {
+    if (!fees.length) return;
+    const amounts: Record<string, string> = {};
+    fees.forEach((f: any) => { amounts[f.role] = String(f.amount); });
+    setFeeAmounts(amounts);
+  }, [fees]);
+
+  const handleSaveFees = async () => {
+    setIsSavingFees(true);
+    try {
+      await Promise.all(
+        FEE_ROLES.map(async ({ role }) => {
+          const existing = fees.find((f: any) => f.role === role);
+          const amount = parseFloat(feeAmounts[role] || "0");
+          if (isNaN(amount) || amount < 0) return;
+          if (existing) {
+            await platformService.updateFee(String(existing.id), { amount, currency: existing.currency || "XAF" });
+          } else {
+            await platformService.createFee({ role, amount, currency: "XAF" });
+          }
+        })
+      );
+      queryClient.invalidateQueries({ queryKey: ["platform"] });
+      toast({ title: "License Fees Saved", description: "Annual license structure has been updated." });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Error", description: err?.response?.data?.detail || "Failed to save fees." });
+    } finally {
+      setIsSavingFees(false);
+    }
+  };
+
+  const handleSaveTutorials = async () => {
+    setIsSavingTutorials(true);
+    try {
+      await platformService.updatePlatformSettings({ tutorial_links: tutorialEdits } as any);
+      queryClient.invalidateQueries({ queryKey: ["platform", "settings"] });
+      toast({ title: "Training Links Saved", description: "User training repository updated." });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Error", description: err?.response?.data?.detail || "Failed to save training links." });
+    } finally {
+      setIsSavingTutorials(false);
+    }
+  };
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -173,8 +243,6 @@ export default function PlatformSettingsPage() {
       </div>
     );
   }
-
-  const tutorialLinks = settings?.tutorial_links || {};
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-20">
@@ -295,33 +363,44 @@ export default function PlatformSettingsPage() {
             <TabsContent value="revenue" className="space-y-8">
               <Card className="border-none shadow-xl overflow-hidden rounded-[2.5rem]">
                 <CardHeader className="bg-primary/5 border-b p-10">
-                  <CardTitle className="text-2xl font-black text-primary flex items-center gap-3">
-                    <Coins className="w-6 h-6 text-secondary" />
-                    Annual License Structures
-                  </CardTitle>
-                  <CardDescription>View the platform access fees for non-executive roles.</CardDescription>
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <CardTitle className="text-2xl font-black text-primary flex items-center gap-3">
+                        <Coins className="w-6 h-6 text-secondary" />
+                        Annual License Structures
+                      </CardTitle>
+                      <CardDescription>Set the platform access fees for non-executive roles (XAF).</CardDescription>
+                    </div>
+                    {isSuperUser && (
+                      <Button onClick={handleSaveFees} disabled={isSavingFees} className="h-12 px-8 font-black uppercase tracking-widest text-xs gap-2 rounded-2xl bg-primary text-white">
+                        {isSavingFees ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        Save Fees
+                      </Button>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent className="p-10">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {[
-                      { role: "STUDENT", label: "Student Access", icon: GraduationCap },
-                      { role: "TEACHER", label: "Teacher Licensing", icon: Users },
-                      { role: "PARENT", label: "Family Portal", icon: Heart },
-                      { role: "BURSAR", label: "Financial Node", icon: Wallet },
-                      { role: "LIBRARIAN", label: "Library Node", icon: BookOpen },
-                      { role: "SCHOOL_ADMIN", label: "Primary Admin", icon: Building2 },
-                    ].map(({ role, label, icon: Icon }) => {
-                      const feeRecord = fees.find((fee) => fee.role === role);
-                      return (
-                        <div key={role} className="space-y-3 p-4 rounded-2xl bg-accent/30 border border-accent">
-                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                            <Icon className="w-3.5 h-3.5 text-primary" />
-                            {label}
-                          </Label>
-                          <Input value={feeRecord ? `${feeRecord.currency} ${feeRecord.amount}` : "Not configured"} disabled className="bg-white border-none h-12 rounded-xl font-black text-primary" />
+                    {FEE_ROLES.map(({ role, label, icon: Icon }) => (
+                      <div key={role} className="space-y-3 p-4 rounded-2xl bg-accent/30 border border-accent">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                          <Icon className="w-3.5 h-3.5 text-primary" />
+                          {label}
+                        </Label>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black text-muted-foreground shrink-0">XAF</span>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={feeAmounts[role] ?? ""}
+                            onChange={(e) => setFeeAmounts((prev) => ({ ...prev, [role]: e.target.value }))}
+                            placeholder="0"
+                            disabled={!isSuperUser}
+                            className="bg-white border-none h-12 rounded-xl font-black text-primary"
+                          />
                         </div>
-                      );
-                    })}
+                      </div>
+                    ))}
                   </div>
                 </CardContent>
               </Card>
@@ -330,32 +409,46 @@ export default function PlatformSettingsPage() {
             <TabsContent value="training" className="space-y-8">
               <Card className="border-none shadow-xl overflow-hidden rounded-[2.5rem]">
                 <CardHeader className="bg-primary p-10 text-white">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 bg-white/10 rounded-2xl">
-                      <PlayCircle className="w-8 h-8 text-secondary" />
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-white/10 rounded-2xl">
+                        <PlayCircle className="w-8 h-8 text-secondary" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-2xl font-black uppercase tracking-tighter">User Training Repository</CardTitle>
+                        <CardDescription className="text-white/60">Set the tutorial URLs displayed in each user role's dashboard.</CardDescription>
+                      </div>
                     </div>
-                    <div>
-                      <CardTitle className="text-2xl font-black uppercase tracking-tighter">User Training Repository</CardTitle>
-                      <CardDescription className="text-white/60">View the educational links used across user dashboards.</CardDescription>
-                    </div>
+                    {isSuperUser && (
+                      <Button onClick={handleSaveTutorials} disabled={isSavingTutorials} variant="secondary" className="h-12 px-8 font-black uppercase tracking-widest text-xs gap-2 rounded-2xl text-primary">
+                        {isSavingTutorials ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        Save Links
+                      </Button>
+                    )}
                   </div>
                 </CardHeader>
                 <CardContent className="p-10">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {["STUDENT", "TEACHER", "PARENT", "SCHOOL_ADMIN", "SUB_ADMIN", "BURSAR", "LIBRARIAN"].map((role) => (
+                    {TRAINING_ROLES.map((role) => (
                       <div key={role} className="space-y-3 p-4 rounded-2xl bg-accent/30 border border-accent">
                         <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
                           <LinkIcon className="w-3.5 h-3.5 text-primary" />
-                          {role.replace("_", " ")} Link
+                          {role.replace("_", " ")} Tutorial
                         </Label>
-                        <Input value={tutorialLinks[role as keyof typeof tutorialLinks] || ""} disabled placeholder="Not configured" className="bg-white border-none h-11 rounded-xl text-xs font-bold" />
+                        <Input
+                          value={tutorialEdits[role] ?? ""}
+                          onChange={(e) => setTutorialEdits((prev) => ({ ...prev, [role]: e.target.value }))}
+                          placeholder="https://..."
+                          disabled={!isSuperUser}
+                          className="bg-white border-none h-11 rounded-xl text-xs font-bold"
+                        />
                       </div>
                     ))}
                   </div>
                 </CardContent>
                 <CardFooter className="bg-accent/10 p-6 border-t flex items-center gap-3">
                   <Info className="w-5 h-5 text-primary opacity-40" />
-                  <p className="text-[10px] text-muted-foreground italic">Training links are driven by backend configuration and start empty until you add them.</p>
+                  <p className="text-[10px] text-muted-foreground italic">Training links are embedded in user dashboards to guide onboarding for each role.</p>
                 </CardFooter>
               </Card>
             </TabsContent>

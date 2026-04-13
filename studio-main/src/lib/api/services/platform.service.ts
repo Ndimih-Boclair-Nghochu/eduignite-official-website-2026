@@ -29,6 +29,11 @@ export const platformService = {
     return data;
   },
 
+  async createFee(feeData: { role: string; amount: number; currency?: string }): Promise<any> {
+    const { data } = await apiClient.post(API.PLATFORM.FEES, feeData);
+    return data;
+  },
+
   async getPublicEvents(params?: ListParams): Promise<PaginatedResponse<PublicEvent>> {
     const { data } = await apiClient.get(API.PLATFORM.EVENTS, { params });
     return data;

@@ -16,9 +16,8 @@ class ParticipantSerializer(serializers.ModelSerializer):
         read_only_fields = ['joined_at', 'last_read_at']
 
     def get_user_avatar(self, obj):
-        if obj.user.avatar:
-            return obj.user.avatar.url
-        return None
+        # avatar is a URLField (plain string) — return directly, no .url needed
+        return obj.user.avatar or None
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -37,9 +36,7 @@ class MessageSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'sender_id', 'sender_name', 'sender_avatar', 'created_at', 'is_read', 'read_at', 'is_deleted']
 
     def get_sender_avatar(self, obj):
-        if obj.sender and obj.sender.avatar:
-            return obj.sender.avatar.url
-        return None
+        return (obj.sender.avatar if obj.sender else None) or None
 
     def get_reply_to_text(self, obj):
         if obj.reply_to and not obj.reply_to.is_deleted:
@@ -82,7 +79,7 @@ class ConversationListSerializer(serializers.ModelSerializer):
             {
                 'id': p.id,
                 'name': p.get_full_name(),
-                'avatar': p.avatar.url if p.avatar else None
+                'avatar': p.avatar or None,  # URLField is a plain string
             }
             for p in participants
         ]

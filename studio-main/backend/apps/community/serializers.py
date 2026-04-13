@@ -2,19 +2,28 @@ from rest_framework import serializers
 from .models import Testimony, CommunityBlog, BlogComment
 
 
+class AuthorSerializer(serializers.Serializer):
+    """Minimal author representation embedded in blog/comment responses."""
+    id = serializers.IntegerField(source='pk', read_only=True)
+    name = serializers.SerializerMethodField()
+    avatar = serializers.URLField(read_only=True)
+    role = serializers.CharField(read_only=True)
+
+    def get_name(self, obj):
+        return obj.get_full_name() or obj.email
+
+
 class TestimonySerializer(serializers.ModelSerializer):
-    user_name = serializers.CharField(source='user.get_full_name', read_only=True)
-    user_avatar = serializers.SerializerMethodField()
+    author = serializers.SerializerMethodField()
+    content = serializers.CharField(source='message', read_only=True)
 
     class Meta:
         model = Testimony
-        fields = ['id', 'user', 'user_name', 'user_avatar', 'school_name', 'role_display',
-                  'message', 'status', 'created_at']
+        fields = ['id', 'author', 'school_name', 'role_display',
+                  'message', 'content', 'status', 'created_at']
 
-    def get_user_avatar(self, obj):
-        if obj.user.avatar:
-            return obj.user.avatar.url
-        return None
+    def get_author(self, obj):
+        return AuthorSerializer(obj.user).data
 
 
 class TestimonyCreateSerializer(serializers.ModelSerializer):
@@ -28,51 +37,39 @@ class TestimonyCreateSerializer(serializers.ModelSerializer):
 
 
 class BlogCommentSerializer(serializers.ModelSerializer):
-    author_name = serializers.CharField(source='author.get_full_name', read_only=True)
-    author_avatar = serializers.SerializerMethodField()
+    author = serializers.SerializerMethodField()
 
     class Meta:
         model = BlogComment
-        fields = ['id', 'author', 'author_name', 'author_avatar', 'content', 'is_approved', 'created_at']
+        fields = ['id', 'author', 'content', 'is_approved', 'created_at']
 
-    def get_author_avatar(self, obj):
-        if obj.author.avatar:
-            return obj.author.avatar.url
-        return None
+    def get_author(self, obj):
+        return AuthorSerializer(obj.author).data
 
 
 class CommunityBlogListSerializer(serializers.ModelSerializer):
-    author_name = serializers.CharField(source='author.get_full_name', read_only=True)
-    author_role = serializers.CharField(source='author.role', read_only=True)
-    author_avatar = serializers.SerializerMethodField()
+    author = serializers.SerializerMethodField()
 
     class Meta:
         model = CommunityBlog
-        fields = ['id', 'title', 'author', 'author_name', 'author_role', 'author_avatar',
-                  'image', 'slug', 'view_count', 'created_at', 'is_published']
+        fields = ['id', 'title', 'author', 'image', 'paragraphs', 'slug',
+                  'view_count', 'created_at', 'is_published']
 
-    def get_author_avatar(self, obj):
-        if obj.author.avatar:
-            return obj.author.avatar.url
-        return None
+    def get_author(self, obj):
+        return AuthorSerializer(obj.author).data
 
 
 class CommunityBlogDetailSerializer(serializers.ModelSerializer):
-    author_name = serializers.CharField(source='author.get_full_name', read_only=True)
-    author_role = serializers.CharField(source='author.role', read_only=True)
-    author_avatar = serializers.SerializerMethodField()
+    author = serializers.SerializerMethodField()
     comments = serializers.SerializerMethodField()
 
     class Meta:
         model = CommunityBlog
-        fields = ['id', 'title', 'author', 'author_name', 'author_role', 'author_avatar',
-                  'image', 'paragraphs', 'slug', 'view_count', 'is_published', 'published_at',
-                  'created_at', 'comments']
+        fields = ['id', 'title', 'author', 'image', 'paragraphs', 'slug',
+                  'view_count', 'is_published', 'published_at', 'created_at', 'comments']
 
-    def get_author_avatar(self, obj):
-        if obj.author.avatar:
-            return obj.author.avatar.url
-        return None
+    def get_author(self, obj):
+        return AuthorSerializer(obj.author).data
 
     def get_comments(self, obj):
         comments = obj.comments.filter(is_approved=True)

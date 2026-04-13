@@ -500,6 +500,12 @@ export default function SchoolsManagementPage() {
                   </Badge>
                   <span className="text-[10px] font-mono text-muted-foreground">{school.id}</span>
                 </div>
+                {school.matricule && (
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <Fingerprint className="w-3 h-3 text-primary/40" />
+                    <span className="text-[9px] font-mono font-black text-primary/50 tracking-widest">{school.matricule}</span>
+                  </div>
+                )}
               </div>
             </CardHeader>
             
@@ -649,10 +655,11 @@ export default function SchoolsManagementPage() {
                       </div>
                     </div>
                     <div className="flex flex-col items-center gap-2 mt-8">
-                       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground mb-1">Provisioned Institutional ID (Matricule)</p>
+                       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground mb-1">Activation Matricule (Principal Account Key)</p>
                        <div className="bg-primary text-secondary px-8 py-4 rounded-2xl shadow-xl">
-                          <p className="text-4xl font-mono font-black tracking-tighter leading-none">{onboardingSuccess?.id}</p>
+                          <p className="text-4xl font-mono font-black tracking-tighter leading-none">{onboardingSuccess?.matricule || onboardingSuccess?.id}</p>
                        </div>
+                       <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest mt-1">Share this with the principal to activate the school account</p>
                     </div>
                   </div>
                </div>

@@ -3,40 +3,29 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import axios from "axios";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
-  MessageSquare,
-  Send,
-  Building2,
-  User,
-  Clock,
-  Trash2,
-  CheckCircle2,
-  MessageCircle,
-  ShieldCheck,
-  AlertCircle,
-  Lightbulb,
-  Heart,
-  Settings2,
-  HelpCircle,
-  Loader2
+  MessageSquare, Send, Clock, CheckCircle2, MessageCircle,
+  ShieldCheck, AlertCircle, Lightbulb, Heart, Settings2,
+  HelpCircle, Loader2, RefreshCw, User,
 } from "lucide-react";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import { feedbackService } from "@/lib/api/services/feedback.service";
+
+const normalizeList = (payload: any) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.results)) return payload.results;
+  return [];
+};
 
 const SUBJECT_OPTIONS = [
   { value: "Technical Error", label: "Error / Bug Report", icon: AlertCircle, color: "text-red-500" },
@@ -47,106 +36,68 @@ const SUBJECT_OPTIONS = [
   { value: "Other", label: "Other Support Request", icon: HelpCircle, color: "text-muted-foreground" },
 ];
 
-// API Hooks
-const useFeedbacks = () => {
-  return useQuery({
-    queryKey: ["feedbacks"],
-    queryFn: async () => {
-      const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/feedbacks`);
-      return data;
-    },
-    initialData: [],
-  });
-};
-
-const useMyFeedbacks = () => {
-  return useQuery({
-    queryKey: ["my-feedbacks"],
-    queryFn: async () => {
-      const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/feedbacks/me`);
-      return data;
-    },
-    initialData: [],
-  });
-};
-
-const useFeedbackStats = () => {
-  return useQuery({
-    queryKey: ["feedback-stats"],
-    queryFn: async () => {
-      const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/feedbacks/stats`);
-      return data;
-    },
-    initialData: {},
-  });
-};
-
-const useCreateFeedback = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (feedback: any) => {
-      const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/feedbacks`, feedback);
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["feedbacks"] });
-      queryClient.invalidateQueries({ queryKey: ["feedback-stats"] });
-    },
-  });
-};
-
-const useResolveFeedback = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (feedbackId: string) => {
-      const { data } = await axios.patch(`${process.env.NEXT_PUBLIC_API_URL}/feedbacks/${feedbackId}/resolve`);
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["feedbacks"] });
-    },
-  });
+const STATUS_STYLE: Record<string, string> = {
+  Resolved: "bg-green-100 text-green-700",
+  Pending: "bg-amber-100 text-amber-700",
+  "In Progress": "bg-blue-100 text-blue-700",
 };
 
 export default function FeedbackPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const [isSending, setIsSending] = useState(false);
-  const [newFeedback, setNewFeedback] = useState({ subject: "", message: "" });
+  const [newFeedback, setNewFeedback] = useState({ subject: "", message: "", priority: "MEDIUM" });
 
-  const isSuperAdmin = ["SUPER_ADMIN", "CEO", "CTO", "COO"].includes(user?.role || "");
+  const isSuperAdmin = ["SUPER_ADMIN", "CEO", "CTO", "COO", "INV"].includes(user?.role || "");
 
-  const { data: feedbacks = [] } = useFeedbacks();
-  const { data: myFeedbacks = [] } = useMyFeedbacks();
-  const { data: feedbackStats = {} } = useFeedbackStats();
-  const createFeedbackMutation = useCreateFeedback();
-  const resolveFeedbackMutation = useResolveFeedback();
+  // All feedbacks (for admins)
+  const {
+    data: feedbacks = [],
+    isLoading: loadingAll,
+    isError: errorAll,
+    refetch: refetchAll,
+  } = useQuery({
+    queryKey: ["all-feedbacks"],
+    queryFn: async () => normalizeList(await feedbackService.getFeedbacks()),
+    enabled: isSuperAdmin,
+    retry: 2,
+  });
 
-  const handleSendFeedback = async () => {
-    if (!newFeedback.message || !newFeedback.subject || !user) return;
-    setIsSending(true);
+  // My feedbacks (for regular users)
+  const {
+    data: myFeedbacks = [],
+    isLoading: loadingMine,
+  } = useQuery({
+    queryKey: ["my-feedbacks"],
+    queryFn: async () => normalizeList(await feedbackService.getMyFeedbacks()),
+    enabled: !isSuperAdmin,
+    retry: 2,
+  });
 
-    try {
-      await createFeedbackMutation.mutateAsync(newFeedback);
-      setIsSending(false);
+  // Create feedback
+  const createMutation = useMutation({
+    mutationFn: (data: { subject: string; message: string; priority: string }) =>
+      feedbackService.createFeedback(data as any),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["my-feedbacks"] });
       toast({ title: "Feedback Sent", description: "The platform administrator has received your message." });
-      setNewFeedback({ subject: "", message: "" });
-    } catch (error) {
-      setIsSending(false);
-      toast({ variant: "destructive", title: "Error", description: "Failed to send feedback" });
-    }
-  };
+      setNewFeedback({ subject: "", message: "", priority: "MEDIUM" });
+    },
+    onError: () => toast({ variant: "destructive", title: "Error", description: "Failed to send feedback." }),
+  });
 
-  const handleResolveFeedback = async (id: string) => {
-    try {
-      await resolveFeedbackMutation.mutateAsync(id);
+  // Resolve feedback
+  const resolveMutation = useMutation({
+    mutationFn: (id: string) => feedbackService.resolveFeedback(id, "Resolved by admin."),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["all-feedbacks"] });
       toast({ title: "Feedback Resolved", description: "Ticket has been marked as resolved." });
-    } catch (error) {
-      toast({ variant: "destructive", title: "Error", description: "Failed to resolve feedback" });
-    }
-  };
+    },
+    onError: () => toast({ variant: "destructive", title: "Error", description: "Failed to resolve feedback." }),
+  });
 
+  // --- Admin view ---
   if (isSuperAdmin) {
     return (
       <div className="space-y-8 pb-20">
@@ -158,79 +109,85 @@ export default function FeedbackPage() {
               </div>
               Platform Feedback
             </h1>
-            <p className="text-muted-foreground mt-1">Review issues, suggestions, and support requests from institutional admins.</p>
+            <p className="text-muted-foreground mt-1">
+              Review issues, suggestions, and support requests from institutional admins.
+            </p>
           </div>
           <Badge variant="outline" className="h-10 px-4 rounded-xl border-primary/20 text-primary font-black uppercase tracking-widest">
-            {feedbacks?.length || 0} Active Tickets
+            {feedbacks.length} Active Tickets
           </Badge>
         </div>
 
+        {loadingAll && (
+          <div className="flex justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary/40" />
+          </div>
+        )}
+
+        {errorAll && !loadingAll && (
+          <div className="flex flex-col items-center py-12 gap-3">
+            <AlertCircle className="w-8 h-8 text-destructive/40" />
+            <p className="text-muted-foreground">Failed to load feedback tickets.</p>
+            <Button variant="outline" size="sm" onClick={() => refetchAll()} className="gap-2">
+              <RefreshCw className="w-4 h-4" /> Retry
+            </Button>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 gap-6">
-          {feedbacks?.map((fb: any) => (
+          {feedbacks.map((fb: any) => (
             <Card key={fb.id} className="border-none shadow-xl overflow-hidden group hover:shadow-2xl transition-all duration-300">
               <div className="flex flex-col md:flex-row">
                 <div className="w-full md:w-64 bg-accent/20 border-r p-6 flex flex-col items-center text-center space-y-4 shrink-0">
-                  <div className="w-20 h-20 rounded-2xl bg-white p-3 border shadow-inner flex items-center justify-center">
-                    <img src={fb.schoolLogo} alt="School" className="w-full h-full object-contain" />
-                  </div>
+                  <Avatar className="h-20 w-20 border-4 border-white shadow-xl">
+                    <AvatarImage src={fb.sender_avatar || ""} />
+                    <AvatarFallback className="bg-primary text-white text-2xl font-bold">
+                      {fb.sender_name?.charAt(0) || <User className="w-8 h-8" />}
+                    </AvatarFallback>
+                  </Avatar>
                   <div>
-                    <h3 className="font-black text-primary text-sm uppercase leading-tight">{fb.schoolName}</h3>
-                    <p className="text-[10px] text-muted-foreground uppercase font-bold mt-1">Node: {fb.schoolId}</p>
+                    <h3 className="font-black text-primary text-sm uppercase leading-tight">{fb.sender_name}</h3>
+                    {fb.sender_role && (
+                      <p className="text-[10px] text-muted-foreground uppercase font-bold mt-1">{fb.sender_role}</p>
+                    )}
                   </div>
                   <div className="pt-4 border-t border-accent/50 w-full">
-                    <Badge className={cn(
-                      "w-full justify-center py-1 font-black uppercase text-[9px]",
-                      fb.status === 'Resolved' ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
-                    )}>
-                      {fb.status}
+                    <Badge className={cn("w-full justify-center py-1 font-black uppercase text-[9px]", STATUS_STYLE[fb.status] || "bg-amber-100 text-amber-700")}>
+                      {fb.status || "Pending"}
                     </Badge>
                   </div>
                 </div>
 
                 <div className="flex-1 p-6 md:p-8 flex flex-col">
-                  <div className="flex items-start justify-between gap-4 mb-6">
-                    <div className="flex items-center gap-4">
-                      <Avatar className="h-12 w-12 border-2 border-primary">
-                        <AvatarImage src={fb.senderAvatar} />
-                        <AvatarFallback className="bg-primary text-white font-bold">{fb.senderName?.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-black text-primary">{fb.senderName}</span>
-                          <Badge className="bg-secondary text-primary border-none text-[8px] h-4 font-black uppercase">{fb.senderRole}</Badge>
-                        </div>
-                        <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                          <Clock className="w-3 h-3" /> {new Date(fb.createdAt).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 flex-1">
+                  <div className="flex items-center gap-2 mb-4">
                     <Badge variant="secondary" className="bg-primary/5 text-primary border-primary/10 font-bold uppercase text-[10px]">
                       {fb.subject}
                     </Badge>
-                    <div className="bg-white/50 border border-accent rounded-2xl p-6 italic text-muted-foreground leading-relaxed">
-                      "{fb.message}"
-                    </div>
+                    <p className="text-[10px] text-muted-foreground flex items-center gap-1 ml-auto">
+                      <Clock className="w-3 h-3" />
+                      {fb.created_at ? new Date(fb.created_at).toLocaleString() : ""}
+                    </p>
                   </div>
 
-                  <div className="mt-8 pt-6 border-t flex flex-col sm:flex-row justify-between items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <ShieldCheck className="w-4 h-4 text-green-600" />
-                      <span className="text-[10px] font-black text-muted-foreground tracking-widest italic">Node Verified</span>
-                    </div>
-                    <div className="flex gap-2 w-full sm:w-auto">
-                      <Button className="gap-2 shadow-lg" onClick={() => handleResolveFeedback(fb.id)} disabled={fb.status === 'Resolved'}>
-                        <CheckCircle2 className="w-4 h-4" /> {fb.status === 'Resolved' ? 'Resolved' : 'Resolve Ticket'}
-                      </Button>
-                    </div>
+                  <div className="bg-white/50 border border-accent rounded-2xl p-6 italic text-muted-foreground leading-relaxed flex-1">
+                    "{fb.message}"
+                  </div>
+
+                  <div className="mt-6 pt-4 border-t flex justify-end">
+                    <Button
+                      className="gap-2 shadow-lg"
+                      onClick={() => resolveMutation.mutate(String(fb.id))}
+                      disabled={fb.status === "Resolved" || resolveMutation.isPending}
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      {fb.status === "Resolved" ? "Resolved" : "Resolve Ticket"}
+                    </Button>
                   </div>
                 </div>
               </div>
             </Card>
           ))}
-          {(!feedbacks || feedbacks.length === 0) && (
+          {!loadingAll && !errorAll && feedbacks.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-center space-y-4 bg-white/50 rounded-3xl border-2 border-dashed">
               <MessageSquare className="w-16 h-16 text-primary/10" />
               <p className="text-muted-foreground">No platform feedback found in the queue.</p>
@@ -241,28 +198,39 @@ export default function FeedbackPage() {
     );
   }
 
+  // --- Regular user view ---
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <h1 className="text-3xl font-bold text-primary font-headline">Contact Support</h1>
+
       <Card className="border-none shadow-xl rounded-[2rem] overflow-hidden">
         <CardHeader className="bg-primary p-8 text-white">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-white/10 rounded-2xl"><MessageSquare className="w-8 h-8 text-secondary" /></div>
+            <div className="p-3 bg-white/10 rounded-2xl">
+              <MessageSquare className="w-8 h-8 text-secondary" />
+            </div>
             <div>
               <CardTitle className="text-2xl font-black">Submit Feedback</CardTitle>
-              <CardDescription className="text-white/60">Your suggestions help improve the platform for everyone.</CardDescription>
+              <CardDescription className="text-white/60">
+                Your suggestions help improve the platform for everyone.
+              </CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="p-8 space-y-6">
           <div className="space-y-2">
             <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Subject / Category</Label>
-            <Select value={newFeedback.subject} onValueChange={(v) => setNewFeedback({...newFeedback, subject: v})}>
-              <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl"><SelectValue placeholder="Select category..." /></SelectTrigger>
+            <Select value={newFeedback.subject} onValueChange={(v) => setNewFeedback({ ...newFeedback, subject: v })}>
+              <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl">
+                <SelectValue placeholder="Select category..." />
+              </SelectTrigger>
               <SelectContent>
                 {SUBJECT_OPTIONS.map((opt) => (
                   <SelectItem key={opt.value} value={opt.value}>
-                    <div className="flex items-center gap-2"><opt.icon className={cn("w-4 h-4", opt.color)} /><span>{opt.label}</span></div>
+                    <div className="flex items-center gap-2">
+                      <opt.icon className={cn("w-4 h-4", opt.color)} />
+                      <span>{opt.label}</span>
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -274,16 +242,54 @@ export default function FeedbackPage() {
               placeholder="Describe your issue or suggestion..."
               className="min-h-[200px] bg-accent/30 border-none rounded-xl focus-visible:ring-primary"
               value={newFeedback.message}
-              onChange={(e) => setNewFeedback({...newFeedback, message: e.target.value})}
+              onChange={(e) => setNewFeedback({ ...newFeedback, message: e.target.value })}
             />
           </div>
         </CardContent>
         <CardFooter className="bg-accent/20 p-6 border-t border-accent">
-          <Button className="w-full h-14 rounded-2xl shadow-xl font-black uppercase text-xs gap-3" onClick={handleSendFeedback} disabled={isSending || !newFeedback.message || !newFeedback.subject}>
-            {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />} Send Official Feedback
+          <Button
+            className="w-full h-14 rounded-2xl shadow-xl font-black uppercase text-xs gap-3"
+            onClick={() => createMutation.mutate(newFeedback)}
+            disabled={createMutation.isPending || !newFeedback.message.trim() || !newFeedback.subject}
+          >
+            {createMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+            Send Official Feedback
           </Button>
         </CardFooter>
       </Card>
+
+      {/* My submitted feedbacks */}
+      {(myFeedbacks.length > 0 || loadingMine) && (
+        <div className="space-y-4">
+          <h2 className="text-lg font-black text-primary uppercase tracking-tight">My Submissions</h2>
+          {loadingMine && (
+            <div className="flex justify-center py-6">
+              <Loader2 className="w-6 h-6 animate-spin text-primary/40" />
+            </div>
+          )}
+          {myFeedbacks.map((fb: any) => (
+            <Card key={fb.id} className="border-none shadow-sm rounded-2xl bg-white">
+              <CardContent className="p-5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <Badge variant="secondary" className="bg-primary/5 text-primary border-none font-bold uppercase text-[10px]">
+                    {fb.subject}
+                  </Badge>
+                  <Badge className={cn("text-[9px] font-black uppercase border-none", STATUS_STYLE[fb.status] || "bg-amber-100 text-amber-700")}>
+                    {fb.status || "Pending"}
+                  </Badge>
+                </div>
+                {fb.message && (
+                  <p className="text-sm text-muted-foreground leading-relaxed">{fb.message}</p>
+                )}
+                <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {fb.created_at ? new Date(fb.created_at).toLocaleString() : ""}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

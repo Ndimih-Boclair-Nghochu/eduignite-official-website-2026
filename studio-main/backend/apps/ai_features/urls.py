@@ -10,4 +10,5 @@ router.register(r'insights', views.AIInsightViewSet, basename='ai-insight')
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('chat/', views.direct_chat, name='direct-chat'),
 ]
