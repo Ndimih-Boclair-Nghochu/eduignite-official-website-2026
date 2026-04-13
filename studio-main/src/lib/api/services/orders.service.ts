@@ -24,14 +24,15 @@ export const ordersService = {
     return data;
   },
 
-  async processOrder(idOrPayload: string | { id: string }): Promise<Order> {
+  async processOrder(idOrPayload: string | { id: string; status?: string; notes?: string }): Promise<Order> {
     const id = typeof idOrPayload === 'string' ? idOrPayload : idOrPayload.id;
-    const { data } = await apiClient.post(API.ORDERS.PROCESS(id), {});
+    const payload = typeof idOrPayload === 'string' ? {} : { status: idOrPayload.status, notes: idOrPayload.notes };
+    const { data } = await apiClient.post(API.ORDERS.PROCESS(id), payload);
     return data;
   },
 
-  async updateOrder(id: string, orderData: Partial<CreateOrderRequest>): Promise<Order> {
-    const { data } = await apiClient.patch(API.ORDERS.DETAIL(id), orderData);
+  async updateOrder(id: string, orderData: Partial<CreateOrderRequest> & { status?: string; notes?: string }): Promise<Order> {
+    const { data } = await apiClient.post(API.ORDERS.PROCESS(id), orderData);
     return data;
   },
 
