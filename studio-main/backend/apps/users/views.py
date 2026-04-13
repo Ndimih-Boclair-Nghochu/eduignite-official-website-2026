@@ -6,9 +6,12 @@ from django.contrib.auth import get_user_model
 from django.db.models import Q, Count
 from django.db import transaction
 from django.utils import timezone
+from django.conf import settings as django_settings
 from drf_spectacular.utils import extend_schema
 from datetime import timedelta
 import logging
+import os
+import uuid
 
 from .serializers import (
     UserListSerializer,
@@ -175,6 +178,47 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response(UserDetailSerializer(request.user).data)
         serializer = UserDetailSerializer(request.user)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    @extend_schema(
+        description='Upload avatar image file for current user',
+        tags=['Users'],
+    )
+    def upload_avatar(self, request):
+        """Upload avatar image and save URL to user profile."""
+        file = request.FILES.get('avatar')
+        if not file:
+            return Response({'detail': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+
+        allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+        if file.content_type not in allowed_types:
+            return Response(
+                {'detail': 'Invalid file type. Use JPEG, PNG, GIF, or WebP.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if file.size > 5 * 1024 * 1024:
+            return Response(
+                {'detail': 'File too large. Maximum size is 5MB.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ext = os.path.splitext(file.name)[1].lower() or '.jpg'
+        filename = f'{uuid.uuid4().hex}{ext}'
+
+        avatar_dir = os.path.join(django_settings.MEDIA_ROOT, 'avatars')
+        os.makedirs(avatar_dir, exist_ok=True)
+        filepath = os.path.join(avatar_dir, filename)
+
+        with open(filepath, 'wb+') as destination:
+            for chunk in file.chunks():
+                destination.write(chunk)
+
+        avatar_url = request.build_absolute_uri(f'{django_settings.MEDIA_URL}avatars/{filename}')
+        request.user.avatar = avatar_url
+        request.user.save(update_fields=['avatar'])
+
+        return Response({'avatar_url': avatar_url}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], permission_classes=[IsOwnerOrExecutive])
     @extend_schema(

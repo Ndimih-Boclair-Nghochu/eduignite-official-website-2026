@@ -15,7 +15,7 @@ import { usersService } from "@/lib/api/services/users.service";
 import { authService } from "@/lib/api/services/auth.service";
 
 export default function ProfilePage() {
-  const { user: authUser } = useAuth();
+  const { user: authUser, updateUser } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -28,9 +28,11 @@ export default function ProfilePage() {
   });
 
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState("");
+  const [avatarPreview, setAvatarPreview] = useState("");
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   const [passwords, setPasswords] = useState({ current: "", new: "", confirm: "" });
 
@@ -38,21 +40,33 @@ export default function ProfilePage() {
   useEffect(() => {
     if (user) {
       setName((user as any).name || "");
+      setEmail((user as any).email || "");
       setPhone((user as any).phone || "");
       setWhatsapp((user as any).whatsapp || "");
-      setAvatarUrl((user as any).avatar || "");
+      setAvatarPreview((user as any).avatar || "");
     }
   }, [user]);
 
   // Update profile mutation
   const updateMutation = useMutation({
-    mutationFn: (data: { name?: string; phone?: string; whatsapp?: string; avatar?: string }) =>
+    mutationFn: (data: { name?: string; phone?: string; whatsapp?: string; avatar?: string; email?: string }) =>
       usersService.updateProfile(data as any),
-    onSuccess: () => {
+    onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["profile-me"] });
+      // Sync auth context so avatar/name appears everywhere
+      updateUser({
+        name: (updated as any).name,
+        email: (updated as any).email,
+        avatar: (updated as any).avatar,
+        phone: (updated as any).phone,
+        whatsapp: (updated as any).whatsapp,
+      } as any);
       toast({ title: "Changes Saved", description: "Your profile has been updated successfully." });
     },
-    onError: () => toast({ variant: "destructive", title: "Error", description: "Failed to update profile." }),
+    onError: (err: any) => {
+      const msg = err?.response?.data?.email?.[0] || err?.response?.data?.detail || "Failed to update profile.";
+      toast({ variant: "destructive", title: "Error", description: msg });
+    },
   });
 
   // Change password mutation
@@ -71,12 +85,39 @@ export default function ProfilePage() {
       toast({ variant: "destructive", title: "Name is required." });
       return;
     }
-    updateMutation.mutate({ name, phone, whatsapp });
+    updateMutation.mutate({ name, phone, whatsapp, email });
   };
 
-  const handleAvatarUrlSave = () => {
-    if (!avatarUrl.trim()) return;
-    updateMutation.mutate({ avatar: avatarUrl });
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ variant: "destructive", title: "File too large", description: "Please select an image smaller than 5MB." });
+      return;
+    }
+
+    // Show preview immediately
+    const previewUrl = URL.createObjectURL(file);
+    setAvatarPreview(previewUrl);
+
+    setIsUploadingAvatar(true);
+    try {
+      const result = await usersService.uploadAvatar(file);
+      setAvatarPreview(result.avatar_url);
+      queryClient.invalidateQueries({ queryKey: ["profile-me"] });
+      // Sync auth context
+      updateUser({ avatar: result.avatar_url } as any);
+      toast({ title: "Photo Updated", description: "Your profile picture has been saved." });
+    } catch (err: any) {
+      setAvatarPreview((user as any)?.avatar || "");
+      const msg = err?.response?.data?.detail || "Failed to upload photo.";
+      toast({ variant: "destructive", title: "Upload Failed", description: msg });
+    } finally {
+      setIsUploadingAvatar(false);
+      // Reset input so same file can be selected again
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const handleUpdatePassword = () => {
@@ -109,7 +150,7 @@ export default function ProfilePage() {
           <CardContent className="flex flex-col items-center space-y-6">
             <div className="relative group">
               <Avatar className="h-40 w-40 border-4 border-white shadow-2xl ring-1 ring-primary/5">
-                <AvatarImage src={(displayUser as any)?.avatar || avatarUrl} />
+                <AvatarImage src={avatarPreview || (displayUser as any)?.avatar || ""} />
                 <AvatarFallback className="bg-primary/5 text-primary text-4xl font-black">
                   {((displayUser as any)?.name || "?").charAt(0)}
                 </AvatarFallback>
@@ -118,10 +159,19 @@ export default function ProfilePage() {
                 size="icon"
                 className="absolute bottom-2 right-2 rounded-2xl shadow-xl border-2 border-white bg-primary text-white hover:bg-primary/90"
                 onClick={() => fileInputRef.current?.click()}
-                title="Change avatar URL"
+                disabled={isUploadingAvatar}
+                title="Upload photo from device"
               >
-                <Camera className="w-4 h-4" />
+                {isUploadingAvatar ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
               </Button>
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                className="hidden"
+                onChange={handleAvatarFileChange}
+              />
             </div>
             <div className="text-center space-y-1">
               <p className="font-black text-xl text-primary uppercase tracking-tight leading-none">
@@ -134,28 +184,9 @@ export default function ProfilePage() {
                 <p className="text-xs text-muted-foreground mt-2 font-mono">{(displayUser as any).id}</p>
               )}
             </div>
-
-            {/* Avatar URL input */}
-            <div className="w-full pt-4 border-t space-y-3">
-              <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Avatar URL</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={avatarUrl}
-                  onChange={(e) => setAvatarUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="h-9 text-xs bg-accent/30 border-none rounded-xl flex-1"
-                />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-9 rounded-xl border-primary/10 shrink-0"
-                  onClick={handleAvatarUrlSave}
-                  disabled={updateMutation.isPending}
-                >
-                  <Save className="w-3.5 h-3.5" />
-                </Button>
-              </div>
-            </div>
+            <p className="text-[10px] text-muted-foreground text-center px-2">
+              Click the camera icon to upload a photo from your device (JPEG, PNG, WebP — max 5MB)
+            </p>
           </CardContent>
         </Card>
 
@@ -185,13 +216,14 @@ export default function ProfilePage() {
                   </div>
                   <div className="space-y-2">
                     <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1 flex items-center gap-2">
-                      <Mail className="w-3.5 h-3.5" /> Email (read-only)
+                      <Mail className="w-3.5 h-3.5" /> Email Address
                     </Label>
                     <Input
                       type="email"
-                      value={(displayUser as any)?.email || ""}
-                      readOnly
-                      className="h-12 bg-accent/10 border-none rounded-xl text-muted-foreground cursor-not-allowed"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="h-12 bg-accent/30 border-none rounded-xl focus-visible:ring-primary font-bold"
+                      placeholder="your@email.com"
                     />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

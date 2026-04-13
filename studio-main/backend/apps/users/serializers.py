@@ -274,6 +274,8 @@ class LicenseToggleSerializer(serializers.ModelSerializer):
 class ProfileUpdateSerializer(serializers.ModelSerializer):
     """Serializer for users to update their own profile."""
 
+    email = serializers.EmailField(required=False)
+
     class Meta:
         model = User
         fields = [
@@ -281,7 +283,14 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
             'phone',
             'whatsapp',
             'avatar',
+            'email',
         ]
+
+    def validate_email(self, value):
+        user = self.instance
+        if user and User.objects.filter(email=value).exclude(pk=user.pk).exists():
+            raise serializers.ValidationError('A user with this email already exists.')
+        return value
 
 
 class FounderShareAdjustmentSerializer(serializers.ModelSerializer):

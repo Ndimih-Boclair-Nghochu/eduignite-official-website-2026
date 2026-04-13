@@ -13,6 +13,9 @@ class TimeStampedModel(models.Model):
 class Announcement(TimeStampedModel):
     TARGET_CHOICES = [
         ('ALL', 'All Users'),
+        ('EXECUTIVE_BOARD', 'Executive Board'),
+        ('STAFF', 'Platform Staff'),
+        ('PARTNER', 'Partners & Investors'),
         ('STUDENT', 'Students Only'),
         ('TEACHER', 'Teachers Only'),
         ('PARENT', 'Parents Only'),

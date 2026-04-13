@@ -92,7 +92,7 @@ export default function PlatformSettingsPage() {
   });
 
   const isDesigner = user?.role === "DESIGNER";
-  const isSuperUser = ["SUPER_ADMIN", "CEO", "CTO", "COO"].includes(user?.role || "");
+  const isSuperUser = ["SUPER_ADMIN", "CEO", "CTO"].includes(user?.role || "");
 
   useEffect(() => {
     if (!settings) return;

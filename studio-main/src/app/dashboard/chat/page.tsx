@@ -9,6 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
   Send,
   Search,
   MessageCircle,
@@ -19,11 +26,13 @@ import {
   AlertCircle,
   RefreshCw,
   Plus,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { chatService } from "@/lib/api/services/chat.service";
+import { usersService } from "@/lib/api/services/users.service";
 
 const normalizeList = (payload: any) => {
   if (Array.isArray(payload)) return payload;
@@ -62,6 +71,13 @@ export default function ChatPage() {
   const [wsConnected, setWsConnected] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+
+  // New conversation dialog state
+  const [newChatOpen, setNewChatOpen] = useState(false);
+  const [userSearch, setUserSearch] = useState("");
+  const [availableUsers, setAvailableUsers] = useState<any[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [isStartingChat, setIsStartingChat] = useState<string | null>(null);
 
   const isExecutive = ["SUPER_ADMIN", "CEO", "CTO", "COO", "INV", "DESIGNER"].includes(
     user?.role || ""
@@ -170,6 +186,48 @@ export default function ChatPage() {
     }
   }, [messageText, selectedConv, user, isExecutive, toast]);
 
+  // Load available users for new conversation
+  const loadAvailableUsers = useCallback(async () => {
+    setIsLoadingUsers(true);
+    try {
+      const result = await usersService.getUsers();
+      const list = normalizeList(result).filter((u: any) => String(u.id) !== String(user?.id));
+      setAvailableUsers(list);
+    } catch {
+      setAvailableUsers([]);
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  }, [user?.id]);
+
+  const handleOpenNewChat = () => {
+    setUserSearch("");
+    setNewChatOpen(true);
+    loadAvailableUsers();
+  };
+
+  const handleStartConversation = async (targetUser: any) => {
+    setIsStartingChat(String(targetUser.id));
+    try {
+      const conv = await chatService.getOrCreateDirect(String(targetUser.id));
+      // Refresh conversations and select the new one
+      await loadConversations();
+      setSelectedConv(conv);
+      setNewChatOpen(false);
+    } catch {
+      toast({ variant: "destructive", title: "Error", description: "Could not start conversation." });
+    } finally {
+      setIsStartingChat(null);
+    }
+  };
+
+  const filteredUsers = availableUsers.filter((u: any) =>
+    !userSearch.trim() ||
+    (u.name || "").toLowerCase().includes(userSearch.toLowerCase()) ||
+    (u.email || "").toLowerCase().includes(userSearch.toLowerCase()) ||
+    (u.role || "").toLowerCase().includes(userSearch.toLowerCase())
+  );
+
   if (user?.role === "SUPER_ADMIN") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-4 px-4">
@@ -189,7 +247,86 @@ export default function ChatPage() {
           {isExecutive ? <Crown className="w-6 h-6 text-secondary" /> : <MessageCircle className="w-6 h-6 text-secondary" />}
           {isExecutive ? "Board Chat" : t("chat")}
         </h1>
+        <Button
+          size="sm"
+          onClick={handleOpenNewChat}
+          className="gap-2 rounded-xl bg-primary text-white font-bold shadow-md"
+        >
+          <Plus className="w-4 h-4" />
+          New Chat
+        </Button>
       </div>
+
+      {/* New Conversation Dialog */}
+      <Dialog open={newChatOpen} onOpenChange={setNewChatOpen}>
+        <DialogContent className="max-w-md rounded-[2rem]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 font-black text-primary uppercase tracking-tight">
+              <Users className="w-5 h-5 text-secondary" />
+              Start a Conversation
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Select a person to start a direct message conversation.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name, email or role..."
+                className="pl-9 bg-accent/30 border-none rounded-xl text-sm h-10"
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+              />
+            </div>
+            <ScrollArea className="h-72">
+              {isLoadingUsers && (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="w-5 h-5 animate-spin text-primary/30" />
+                </div>
+              )}
+              {!isLoadingUsers && filteredUsers.length === 0 && (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  {userSearch ? "No users match your search." : "No users available."}
+                </div>
+              )}
+              <div className="space-y-1 pr-2">
+                {filteredUsers.map((u: any) => (
+                  <button
+                    key={u.id}
+                    onClick={() => handleStartConversation(u)}
+                    disabled={isStartingChat === String(u.id)}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-accent/50 transition-all text-left group"
+                  >
+                    <Avatar className="h-10 w-10 shrink-0">
+                      <AvatarImage src={u.avatar || ""} />
+                      <AvatarFallback className="bg-primary/10 text-primary font-bold text-sm">
+                        {(u.name || "?").charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 overflow-hidden">
+                      <p className="font-bold text-sm text-primary truncate">{u.name || "Unknown"}</p>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="text-[8px] h-3.5 py-0 font-black uppercase bg-secondary/20 text-primary border-none">
+                          {u.role}
+                        </Badge>
+                        {u.email && (
+                          <span className="text-[10px] text-muted-foreground truncate">{u.email}</span>
+                        )}
+                      </div>
+                    </div>
+                    {isStartingChat === String(u.id) ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-primary/40 shrink-0" />
+                    ) : (
+                      <MessageCircle className="w-4 h-4 text-primary/20 group-hover:text-primary/60 transition-colors shrink-0" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="flex-1 flex flex-col md:flex-row gap-4 overflow-hidden">
         {/* Conversation List */}
@@ -219,7 +356,9 @@ export default function ChatPage() {
               <div className="p-6 text-center space-y-2">
                 <MessageCircle className="w-8 h-8 text-primary/20 mx-auto" />
                 <p className="text-xs text-muted-foreground">No conversations yet</p>
-                <p className="text-[10px] text-muted-foreground/60">Start a new chat with a colleague</p>
+                <Button size="sm" variant="outline" onClick={handleOpenNewChat} className="gap-2 mt-2">
+                  <Plus className="w-3 h-3" /> Start a chat
+                </Button>
               </div>
             )}
             <div className="p-2 space-y-1">
@@ -374,8 +513,11 @@ export default function ChatPage() {
               </div>
               <div>
                 <h3 className="font-bold text-primary">Select a Conversation</h3>
-                <p className="text-sm text-muted-foreground mt-1">Choose from your conversations on the left</p>
+                <p className="text-sm text-muted-foreground mt-1">Choose from your conversations on the left, or start a new one.</p>
               </div>
+              <Button onClick={handleOpenNewChat} className="gap-2 rounded-xl" variant="outline">
+                <Plus className="w-4 h-4" /> New Chat
+              </Button>
             </div>
           )}
         </Card>

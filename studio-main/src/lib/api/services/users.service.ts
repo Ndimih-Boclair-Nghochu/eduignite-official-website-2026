@@ -35,6 +35,15 @@ export const usersService = {
     return response;
   },
 
+  async uploadAvatar(file: File): Promise<{ avatar_url: string }> {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const { data } = await apiClient.post(API.USERS.UPLOAD_AVATAR, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  },
+
   async updateRole(id: string, roleOrPayload: string | { role: string }): Promise<User> {
     const role = typeof roleOrPayload === 'string' ? roleOrPayload : roleOrPayload.role;
     const { data } = await apiClient.post(API.USERS.UPDATE_ROLE(id), { role });

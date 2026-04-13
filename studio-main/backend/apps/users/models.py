@@ -165,6 +165,8 @@ class User(AbstractBaseUser, PermissionsMixin):
             UserRole.CEO,
             UserRole.CTO,
             UserRole.COO,
+            UserRole.INV,
+            UserRole.DESIGNER,
         ]
         return self.role in executive_roles
 

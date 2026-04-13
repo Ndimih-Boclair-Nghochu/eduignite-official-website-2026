@@ -54,9 +54,13 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
 
     def check_permissions(self, request):
         role = (request.user.role or '').upper()
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            if role not in ['SCHOOL_ADMIN', 'SUB_ADMIN', 'CEO', 'CTO', 'COO', 'INV']:
+        if self.action in ['create', 'update', 'partial_update']:
+            if role not in ['SCHOOL_ADMIN', 'SUB_ADMIN', 'TEACHER', 'CEO', 'CTO']:
                 self.permission_denied(request)
+        elif self.action == 'destroy':
+            if role not in ['SCHOOL_ADMIN', 'SUB_ADMIN', 'TEACHER', 'CEO', 'CTO']:
+                # Allow deleting own announcements
+                pass
         return super().check_permissions(request)
 
     def perform_create(self, serializer):
@@ -68,7 +72,7 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         user = self.request.user
         role = (user.role or '').upper()
-        if user != instance.sender and role not in ['SCHOOL_ADMIN', 'CEO', 'CTO', 'COO', 'INV']:
+        if user != instance.sender and role not in ['SCHOOL_ADMIN', 'CEO', 'CTO']:
             self.permission_denied(self.request)
         instance.delete()
 
