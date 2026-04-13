@@ -44,6 +44,17 @@ app.conf.beat_schedule = {
         'task': 'apps.library.tasks.sync_library_inventory',
         'schedule': crontab(hour=1, minute=0),
     },
+    # Share governance: auto-remove expired share allocations every day at 03:00 UTC
+    'expire-founder-shares': {
+        'task': 'apps.users.tasks.expire_founder_shares',
+        'schedule': crontab(hour=3, minute=0),
+    },
+    # Founder renewal enforcement: deactivate / delete founders past their
+    # renewable-shares grace period every day at 03:30 UTC
+    'enforce-founder-renewal': {
+        'task': 'apps.users.tasks.enforce_founder_renewal',
+        'schedule': crontab(hour=3, minute=30),
+    },
 }
 
 app.conf.timezone = 'UTC'

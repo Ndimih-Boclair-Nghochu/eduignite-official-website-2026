@@ -9,8 +9,10 @@ import {
   useUpdateFounder,
   useAddFounderShares,
   useDeleteFounder,
+  useRenewFounderShares,
+  useRemoveShareAdjustment,
 } from "@/lib/hooks/useUsers";
-import type { FounderProfile } from "@/lib/api/types";
+import type { FounderProfile, FounderAccessLevel } from "@/lib/api/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,8 +25,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import {
+  AlertTriangle,
   Building2,
+  CalendarClock,
+  CheckCircle2,
   Crown,
+  Eye,
   History,
   Loader2,
   Lock,
@@ -32,8 +38,10 @@ import {
   Pencil,
   PieChart,
   Plus,
+  RefreshCw,
   ShieldCheck,
   Smartphone,
+  Timer,
   Trash2,
   Wallet,
 } from "lucide-react";
@@ -55,11 +63,15 @@ type FounderFormState = {
   role: string;
   founderTitle: string;
   primarySharePercentage: string;
+  hasRenewableShares: boolean;
+  shareRenewalPeriodDays: string;
+  accessLevel: FounderAccessLevel;
 };
 
 type ShareFormState = {
   percentage: string;
   note: string;
+  durationDays: string;
 };
 
 type ExecutiveRecord = {
@@ -78,11 +90,15 @@ const EMPTY_FORM: FounderFormState = {
   role: "COO",
   founderTitle: "",
   primarySharePercentage: "",
+  hasRenewableShares: false,
+  shareRenewalPeriodDays: "365",
+  accessLevel: "FULL",
 };
 
 const EMPTY_SHARE_FORM: ShareFormState = {
   percentage: "",
   note: "",
+  durationDays: "365",
 };
 
 const mapExecutiveRecord = (executive: any): ExecutiveRecord => {
@@ -120,6 +136,8 @@ export default function FoundersManagementPage() {
   const updateFounderMutation = useUpdateFounder();
   const addSharesMutation = useAddFounderShares();
   const deleteFounderMutation = useDeleteFounder();
+  const renewSharesMutation = useRenewFounderShares();
+  const removeShareAdjustmentMutation = useRemoveShareAdjustment();
 
   const isPrimaryFounder = ["CEO", "CTO"].includes(user?.role || "");
   const executiveRecords = executivesData?.results ?? [];
@@ -173,6 +191,9 @@ export default function FoundersManagementPage() {
       role: founder.role,
       founderTitle: founder.founder_title,
       primarySharePercentage: founder.primary_share_percentage,
+      hasRenewableShares: founder.has_renewable_shares,
+      shareRenewalPeriodDays: String(founder.share_renewal_period_days),
+      accessLevel: founder.access_level,
     });
     setIsEditOpen(true);
   };
@@ -193,10 +214,15 @@ export default function FoundersManagementPage() {
         role: form.role as "SUPER_ADMIN" | "COO" | "INV" | "DESIGNER",
         founder_title: form.founderTitle,
         primary_share_percentage: form.primarySharePercentage,
+        has_renewable_shares: form.hasRenewableShares,
+        share_renewal_period_days: form.hasRenewableShares
+          ? parseInt(form.shareRenewalPeriodDays, 10)
+          : undefined,
+        access_level: form.accessLevel,
       });
       toast({
         title: "Founder Added",
-        description: `${created.name} can now activate their account using matricule ${created.matricule}.`,
+        description: `${created.name} has been added. Activation matricule: ${created.matricule}.`,
       });
       setIsCreateOpen(false);
       setForm(EMPTY_FORM);
@@ -222,6 +248,7 @@ export default function FoundersManagementPage() {
           role: form.role as "SUPER_ADMIN" | "COO" | "INV" | "DESIGNER",
           founder_title: form.founderTitle,
           primary_share_percentage: form.primarySharePercentage,
+          access_level: form.accessLevel,
         },
       });
       toast({
@@ -246,11 +273,12 @@ export default function FoundersManagementPage() {
         data: {
           percentage: shareForm.percentage,
           note: shareForm.note,
+          duration_days: parseInt(shareForm.durationDays, 10),
         },
       });
       toast({
         title: "Additional Shares Added",
-        description: `${selectedFounder.name} now has an updated additional share balance.`,
+        description: `Shares locked for ${shareForm.durationDays} day(s) and will auto-expire after that period.`,
       });
       setIsSharesOpen(false);
     } catch (error: any) {
@@ -258,6 +286,38 @@ export default function FoundersManagementPage() {
         variant: "destructive",
         title: "Share update failed",
         description: error?.response?.data?.detail || "We could not record that share adjustment.",
+      });
+    }
+  };
+
+  const handleRenewShares = async (founder: FounderProfile) => {
+    try {
+      await renewSharesMutation.mutateAsync(founder.id);
+      toast({
+        title: "Shares Renewed",
+        description: `${founder.name}'s share period has been renewed for another ${founder.share_renewal_period_days} day(s).`,
+      });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Renewal failed",
+        description: error?.response?.data?.detail || "We could not renew shares right now.",
+      });
+    }
+  };
+
+  const handleRemoveShareAdjustment = async (founder: FounderProfile, adjustmentId: string) => {
+    try {
+      await removeShareAdjustmentMutation.mutateAsync({ founderId: founder.id, adjustmentId });
+      toast({
+        title: "Share Adjustment Removed",
+        description: "The expired share allocation has been removed.",
+      });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Removal failed",
+        description: error?.response?.data?.detail || "We could not remove that share adjustment.",
       });
     }
   };
@@ -352,6 +412,22 @@ export default function FoundersManagementPage() {
                     <Badge className="border-none bg-white px-4 py-1 text-[8px] font-black uppercase text-primary">
                       {founderStatusLabel(founder)}
                     </Badge>
+                    {/* Access level badge */}
+                    {founder.access_level === "READ_ONLY" ? (
+                      <Badge className="border-none bg-amber-400/80 px-4 py-1 text-[8px] font-black uppercase text-white">
+                        <Eye className="mr-1 h-3 w-3" /> Read Only
+                      </Badge>
+                    ) : (
+                      <Badge className="border-none bg-emerald-500/80 px-4 py-1 text-[8px] font-black uppercase text-white">
+                        <CheckCircle2 className="mr-1 h-3 w-3" /> Full Access
+                      </Badge>
+                    )}
+                    {/* Renewable shares warning */}
+                    {founder.has_renewable_shares && founder.is_share_expired && (
+                      <Badge className="border-none bg-red-500 px-4 py-1 text-[8px] font-black uppercase text-white">
+                        <AlertTriangle className="mr-1 h-3 w-3" /> Shares Expired
+                      </Badge>
+                    )}
                   </div>
                   <CardDescription className="text-sm font-bold text-white/80">
                     {founder.founder_title}
@@ -386,6 +462,46 @@ export default function FoundersManagementPage() {
                 </p>
               </div>
 
+              {/* Renewable shares expiry panel */}
+              {founder.has_renewable_shares && (
+                <div className={cn(
+                  "rounded-2xl border p-4",
+                  founder.is_share_expired
+                    ? "border-red-200 bg-red-50"
+                    : (founder.days_until_share_expiry ?? 999) <= 30
+                      ? "border-amber-200 bg-amber-50"
+                      : "border-emerald-200 bg-emerald-50",
+                )}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <CalendarClock className={cn(
+                        "h-4 w-4",
+                        founder.is_share_expired ? "text-red-500" : "text-emerald-600",
+                      )} />
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                        Renewable Shares
+                      </p>
+                    </div>
+                    {founder.is_share_expired ? (
+                      <Badge className="border-none bg-red-500 px-3 py-1 text-[8px] font-black uppercase text-white">
+                        Expired — grace period active
+                      </Badge>
+                    ) : (
+                      <Badge className="border-none bg-emerald-500 px-3 py-1 text-[8px] font-black uppercase text-white">
+                        <Timer className="mr-1 h-3 w-3" />
+                        {founder.days_until_share_expiry} day(s) left
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="mt-2 text-xs font-bold text-primary/70">
+                    Renewal period: {founder.share_renewal_period_days} day(s).
+                    {founder.is_share_expired
+                      ? " Shares have expired. Renew now to restore access before the 30-day grace period ends."
+                      : ` Expires on ${founder.shares_expire_at ? new Date(founder.shares_expire_at).toLocaleDateString() : "—"}.`}
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-3 border-t border-accent pt-4">
                 <InfoRow icon={<Mail className="h-4 w-4" />} value={founder.email} />
                 <InfoRow icon={<Smartphone className="h-4 w-4" />} value={founder.phone || "No contact configured"} />
@@ -394,15 +510,49 @@ export default function FoundersManagementPage() {
 
               {founder.share_adjustments.length > 0 && (
                 <div className="space-y-2 rounded-2xl border border-accent bg-white p-4">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Recent Share Adjustments</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Share Adjustments</p>
                   <div className="space-y-2">
-                    {founder.share_adjustments.slice(0, 3).map((adjustment) => (
-                      <div key={adjustment.id} className="flex flex-col gap-1 rounded-xl bg-accent/20 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-xs font-black text-primary">+{adjustment.percentage}%</p>
+                    {founder.share_adjustments.slice(0, 5).map((adjustment) => (
+                      <div key={adjustment.id} className={cn(
+                        "flex flex-col gap-1 rounded-xl px-3 py-2 sm:flex-row sm:items-center sm:justify-between",
+                        adjustment.is_expired ? "bg-red-50" : adjustment.is_locked ? "bg-accent/20" : "bg-emerald-50",
+                      )}>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs font-black text-primary">+{adjustment.percentage}%</p>
+                            {adjustment.is_locked && (
+                              <Badge className="border-none bg-primary/10 px-2 py-0.5 text-[8px] font-black uppercase text-primary">
+                                <Lock className="mr-1 h-2.5 w-2.5" />
+                                Locked — {adjustment.days_until_expiry}d left
+                              </Badge>
+                            )}
+                            {adjustment.is_expired && (
+                              <Badge className="border-none bg-red-100 px-2 py-0.5 text-[8px] font-black uppercase text-red-600">
+                                Expired
+                              </Badge>
+                            )}
+                          </div>
                           <p className="text-[10px] font-bold text-muted-foreground">{adjustment.note || "Additional founder allocation"}</p>
+                          {adjustment.expires_at && (
+                            <p className="text-[10px] font-bold text-primary/50">
+                              Expires: {new Date(adjustment.expires_at).toLocaleDateString()}
+                            </p>
+                          )}
                         </div>
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-primary/60">{adjustment.added_by_name || "Founder Board"}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-primary/60">{adjustment.added_by_name || "Founder Board"}</p>
+                          {isPrimaryFounder && !adjustment.is_locked && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 rounded-lg px-2 text-red-500 hover:bg-red-50 hover:text-red-600"
+                              onClick={() => handleRemoveShareAdjustment(founder, adjustment.id)}
+                              disabled={removeShareAdjustmentMutation.isPending}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -419,6 +569,19 @@ export default function FoundersManagementPage() {
                     <PieChart className="mr-2 h-4 w-4" />
                     Add Shares
                   </Button>
+                  {founder.has_renewable_shares && (
+                    <Button
+                      variant="outline"
+                      className="rounded-xl border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                      onClick={() => handleRenewShares(founder)}
+                      disabled={renewSharesMutation.isPending}
+                    >
+                      {renewSharesMutation.isPending
+                        ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        : <RefreshCw className="mr-2 h-4 w-4" />}
+                      Renew Shares
+                    </Button>
+                  )}
                   {founder.can_be_removed && (
                     <Button
                       variant="destructive"
@@ -490,8 +653,10 @@ export default function FoundersManagementPage() {
         <CardContent className="grid gap-4 p-8 md:grid-cols-2 xl:grid-cols-4">
           {[
             "CEO remains fixed at 40% primary shares and CTO remains fixed at 27% primary shares.",
-            "CEO and CTO can add secondary founders, define titles, assign roles, and generate activation-ready matricules.",
-            "Additional shares can be granted over time without overwriting the founder’s protected primary shares.",
+            "CEO and CTO can add secondary founders, define titles, assign roles, and generate activation-ready matricules. Every user receives a unique matricule to activate their account.",
+            "Additional shares are locked for the full time frame set at creation — no one can edit or remove them before expiry. Expired shares are automatically removed.",
+            "Renewable-share founders who do not renew within 30 days of expiry are permanently deleted and cannot log in again.",
+            "CEO and CTO set each secondary founder’s access level: Read Only (view only) or Full Access (can perform permitted operations).",
             "Only secondary founders can be removed from the system. Primary founder accounts remain protected.",
           ].map((rule) => (
             <div key={rule} className="rounded-2xl border border-accent bg-accent/20 p-5">
@@ -549,15 +714,41 @@ export default function FoundersManagementPage() {
               <ShareBlock label="Additional Shares" value={`${selectedFounder?.additional_share_percentage || "0.00"}%`} accent />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="additional-share">New Additional Share (%)</Label>
-              <Input
-                id="additional-share"
-                inputMode="decimal"
-                placeholder="e.g. 2.50"
-                value={shareForm.percentage}
-                onChange={(event) => setShareForm((prev) => ({ ...prev, percentage: event.target.value }))}
-              />
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <div className="flex items-start gap-2">
+                <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <p className="text-xs font-bold text-amber-700">
+                  Shares are <span className="underline">locked for the entire duration</span> you set below — no one can edit or remove them before the time frame expires. Once expired they are automatically removed.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="additional-share">New Additional Share (%)</Label>
+                <Input
+                  id="additional-share"
+                  inputMode="decimal"
+                  placeholder="e.g. 2.50"
+                  value={shareForm.percentage}
+                  onChange={(event) => setShareForm((prev) => ({ ...prev, percentage: event.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="share-duration">Lock Duration (days)</Label>
+                <Input
+                  id="share-duration"
+                  inputMode="numeric"
+                  placeholder="e.g. 365"
+                  value={shareForm.durationDays}
+                  onChange={(event) => setShareForm((prev) => ({ ...prev, durationDays: event.target.value }))}
+                />
+                {shareForm.durationDays && parseInt(shareForm.durationDays, 10) > 0 && (
+                  <p className="text-[10px] font-bold text-muted-foreground">
+                    Expires: {new Date(Date.now() + parseInt(shareForm.durationDays, 10) * 86400000).toLocaleDateString()}
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -575,7 +766,15 @@ export default function FoundersManagementPage() {
             <Button variant="outline" onClick={() => setIsSharesOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddShares} disabled={addSharesMutation.isPending || !shareForm.percentage.trim()}>
+            <Button
+              onClick={handleAddShares}
+              disabled={
+                addSharesMutation.isPending ||
+                !shareForm.percentage.trim() ||
+                !shareForm.durationDays.trim() ||
+                parseInt(shareForm.durationDays, 10) < 1
+              }
+            >
               {addSharesMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PieChart className="mr-2 h-4 w-4" />}
               Add Shares
             </Button>
@@ -710,6 +909,62 @@ function FounderDialog({
               placeholder="e.g. 8.50"
             />
           </Field>
+
+          {/* Activity access level */}
+          <Field label="Activity Access Level" htmlFor={`${title}-access-level`}>
+            <Select
+              value={form.accessLevel}
+              onValueChange={(value) => setForm((prev) => ({ ...prev, accessLevel: value as FounderAccessLevel }))}
+            >
+              <SelectTrigger id={`${title}-access-level`}>
+                <SelectValue placeholder="Select access level" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="FULL">Full Access — can perform activities</SelectItem>
+                <SelectItem value="READ_ONLY">Read Only — view only, no actions</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+
+          {/* Renewable shares toggle + period */}
+          <div className="col-span-full space-y-3 rounded-2xl border border-accent bg-accent/20 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-primary">Renewable Shares</p>
+                <p className="text-[10px] font-bold text-muted-foreground">
+                  After expiry the founder has 30 days to renew or their account is permanently deleted.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={form.hasRenewableShares}
+                onClick={() => setForm((prev) => ({ ...prev, hasRenewableShares: !prev.hasRenewableShares }))}
+                className={cn(
+                  "relative inline-flex h-6 w-11 cursor-pointer rounded-full transition-colors focus:outline-none",
+                  form.hasRenewableShares ? "bg-primary" : "bg-muted-foreground/30",
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-block h-5 w-5 translate-y-0.5 rounded-full bg-white shadow transition-transform",
+                    form.hasRenewableShares ? "translate-x-5" : "translate-x-0.5",
+                  )}
+                />
+              </button>
+            </div>
+            {form.hasRenewableShares && (
+              <Field label="Renewal Period (days)" htmlFor={`${title}-renewal-days`}>
+                <Input
+                  id={`${title}-renewal-days`}
+                  inputMode="numeric"
+                  placeholder="e.g. 365"
+                  value={form.shareRenewalPeriodDays}
+                  onChange={(event) => setForm((prev) => ({ ...prev, shareRenewalPeriodDays: event.target.value }))}
+                />
+              </Field>
+            )}
+          </div>
         </div>
 
         <DialogFooter className="gap-3 sm:justify-end">
@@ -724,7 +979,8 @@ function FounderDialog({
               !form.email.trim() ||
               !form.phone.trim() ||
               !form.founderTitle.trim() ||
-              !form.primarySharePercentage.trim()
+              !form.primarySharePercentage.trim() ||
+              (form.hasRenewableShares && (!form.shareRenewalPeriodDays || parseInt(form.shareRenewalPeriodDays, 10) < 1))
             }
           >
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}

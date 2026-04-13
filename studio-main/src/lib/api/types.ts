@@ -111,10 +111,20 @@ export interface User {
   isSchoolAdmin?: boolean;
 }
 
+export type FounderAccessLevel = "READ_ONLY" | "FULL";
+
 export interface FounderShareAdjustment {
   id: string;
   percentage: string;
   note?: string;
+  /** ISO 8601 datetime when this share allocation expires and is auto-removed */
+  expires_at: string | null;
+  /** True if the expiry date has already passed */
+  is_expired: boolean;
+  /** True if the time frame has NOT yet passed — share is locked/uneditable */
+  is_locked: boolean;
+  /** Days remaining until expiry (0 means expired today, null means no expiry) */
+  days_until_expiry: number | null;
   created_at: string;
   added_by_name?: string;
 }
@@ -136,6 +146,18 @@ export interface FounderProfile {
   is_primary_founder: boolean;
   can_be_removed: boolean;
   is_active: boolean;
+  /** Whether this founder's board participation must be periodically renewed */
+  has_renewable_shares: boolean;
+  /** Number of days per renewal period */
+  share_renewal_period_days: number;
+  /** ISO 8601 datetime when the founder's renewable shares expire */
+  shares_expire_at: string | null;
+  /** True when renewable shares have passed their expiry date */
+  is_share_expired: boolean;
+  /** Days remaining until the founder's shares expire (null = not renewable) */
+  days_until_share_expiry: number | null;
+  /** READ_ONLY: can only view; FULL: can perform operations (default) */
+  access_level: FounderAccessLevel;
   share_adjustments: FounderShareAdjustment[];
   created_at: string;
   updated_at: string;
@@ -149,15 +171,24 @@ export interface CreateFounderRequest {
   role: Extract<UserRole, "SUPER_ADMIN" | "COO" | "INV" | "DESIGNER">;
   founder_title: string;
   primary_share_percentage: string;
+  /** CEO/CTO sets whether this founder's shares are renewable */
+  has_renewable_shares?: boolean;
+  /** Days in the renewal period (required when has_renewable_shares=true) */
+  share_renewal_period_days?: number;
+  /** Activity permission level granted by CEO/CTO */
+  access_level?: FounderAccessLevel;
 }
 
 export type UpdateFounderRequest = Partial<CreateFounderRequest> & {
   is_active?: boolean;
+  access_level?: FounderAccessLevel;
 };
 
 export interface AddFounderSharesRequest {
   percentage: string;
   note?: string;
+  /** Number of days until this share allocation expires and is auto-removed */
+  duration_days: number;
 }
 
 export interface LoginRequest {

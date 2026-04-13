@@ -155,6 +155,29 @@ export function useDeleteFounder() {
   });
 }
 
+export function useRenewFounderShares() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => usersService.renewFounderShares(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: usersKeys.founders() });
+    },
+  });
+}
+
+export function useRemoveShareAdjustment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ founderId, adjustmentId }: { founderId: string; adjustmentId: string }) =>
+      usersService.removeShareAdjustment(founderId, adjustmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: usersKeys.founders() });
+    },
+  });
+}
+
 /**
  * Hook for updating user profile
  */
