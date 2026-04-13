@@ -41,6 +41,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { authService } from "@/lib/api/services/auth.service";
 
 type AuthMode = "login" | "activate" | "forgot" | "otp" | "reset" | "success";
 
@@ -131,30 +132,22 @@ export default function LoginPage() {
         setIsProcessing(false);
       }
     } else if (mode === "forgot") {
-      setTimeout(() => {
-        setIsProcessing(false);
-        setAuthMode("otp");
-        toast({ title: t("otpSent"), description: t("checkEmailForCode") });
-      }, 1000);
-    } else if (mode === "otp") {
-      setTimeout(() => {
-        setIsProcessing(false);
-        setAuthMode("reset");
-      }, 800);
-    } else if (mode === "reset") {
-      if (authData.newPassword !== authData.resetConfirmPassword) {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: t("confirmPassword"),
-        });
+      if (!authData.email.trim()) {
+        toast({ variant: "destructive", title: "Email required", description: "Please enter your account email." });
         setIsProcessing(false);
         return;
       }
-      setTimeout(() => {
-        setIsProcessing(false);
+      try {
+        await authService.requestPasswordReset(authData.email.trim());
         setAuthMode("success");
-      }, 1200);
+        toast({ title: "Reset email sent", description: "Check your inbox for a password reset link." });
+      } catch {
+        // Always show success to avoid leaking whether email exists
+        setAuthMode("success");
+        toast({ title: "Reset email sent", description: "If that email is registered, a reset link has been sent." });
+      } finally {
+        setIsProcessing(false);
+      }
     }
   };
 
@@ -229,14 +222,14 @@ export default function LoginPage() {
           {mode === "success" ? (
             <div className="p-12 text-center space-y-8 animate-in zoom-in-95 duration-500">
               <div className="w-24 h-24 bg-green-50 text-green-600 rounded-[2rem] flex items-center justify-center mx-auto shadow-inner border border-green-100">
-                <CheckCircle2 className="w-12 h-12" />
+                <Mail className="w-12 h-12" />
               </div>
               <div className="space-y-2">
                 <CardTitle className="text-3xl font-black text-primary uppercase tracking-tighter">
-                  {t("credentialsUpdated")}
+                  Check Your Email
                 </CardTitle>
                 <CardDescription className="text-sm font-medium px-4">
-                  {t("credentialsUpdatedDesc")}
+                  A password reset link has been sent to your email address. Click the link in the email to set a new password. The link expires in 5 minutes.
                 </CardDescription>
               </div>
               <Button
@@ -278,28 +271,16 @@ export default function LoginPage() {
                 <form onSubmit={handleAuth} className="space-y-6">
                   {mode === "forgot" && (
                     <div className="space-y-6 animate-in slide-in-from-top-2">
-                      <div className="space-y-3">
-                        <Label className="text-[10px] uppercase font-black text-muted-foreground tracking-[0.2em] ml-1 flex items-center gap-2">
-                          <Fingerprint className="w-3.5 h-3.5 text-primary/40" /> {t("matricule")}
-                        </Label>
-                        <Input
-                          required
-                          autoComplete="off"
-                          disabled={isProcessing}
-                          className="h-14 bg-accent/30 border-none rounded-2xl focus-visible:ring-primary font-black uppercase text-center text-xl shadow-inner transition-all focus:bg-white"
-                          value={authData.matricule}
-                          onChange={(e) =>
-                            setAuthData({ ...authData, matricule: e.target.value })
-                          }
-                        />
-                      </div>
+                      <p className="text-sm text-center text-muted-foreground">
+                        Enter your account email and we'll send you a password reset link.
+                      </p>
                       <div className="space-y-3">
                         <Label className="text-[10px] uppercase font-black text-muted-foreground tracking-[0.2em] ml-1 flex items-center gap-2">
                           <Mail className="w-3.5 h-3.5 text-primary/40" /> {t("verifiedCorporateEmail")}
                         </Label>
                         <Input
                           required
-                          autoComplete="off"
+                          autoComplete="email"
                           type="email"
                           disabled={isProcessing}
                           className="h-14 bg-accent/30 border-none rounded-2xl focus-visible:ring-primary font-bold text-center text-lg shadow-inner transition-all focus:bg-white px-6"
