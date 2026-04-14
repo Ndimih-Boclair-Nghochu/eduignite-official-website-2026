@@ -1,17 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { useI18n } from "@/lib/i18n-context";
-import {
-  useAIRequests,
-  useGenerateStudyPlan,
-  useAnalyzeGrades,
-  useExamPrep,
-  useParentReport,
-  usePlatformInsights,
-  useAIInsights,
-} from "@/lib/hooks";
 import { useToast } from "@/hooks/use-toast";
 import {
   Card,
@@ -19,931 +9,599 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
-  CardFooter,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Sparkles,
   Loader2,
-  Plus,
-  Clock,
   MessageSquare,
-  Lightbulb,
-  BookMarked,
-  FileText,
-  Users,
   Send,
-  Activity,
+  BookOpen,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AIRequest, AIInsight } from "@/types/ai";
-import { aiService } from "@/lib/api/services/ai.service";
 
-type RequestType = "study_plan" | "grade_analysis" | "exam_prep" | "parent_report" | "general";
+type ChatMessage = { role: "user" | "assistant"; content: string; ts: number };
 
-const SUBJECTS = [
-  "Math",
-  "Physics",
-  "Chemistry",
-  "Biology",
-  "English",
-  "French",
-  "History",
-  "Geography",
+// ─── Static FAQ knowledge base ───────────────────────────────────────────────
+
+const FAQ_TOPICS = [
+  { label: "Getting Started", prompt: "How do I get started on EduIgnite?" },
+  { label: "Update My Profile", prompt: "How do I update my profile?" },
+  { label: "Manage Students", prompt: "How do I manage students?" },
+  { label: "Take Attendance", prompt: "How do I take attendance?" },
+  { label: "Enter Grades", prompt: "How do I enter grades?" },
+  { label: "Manage Fees", prompt: "How do I manage fees and payments?" },
+  { label: "Live Classes", prompt: "How do live classes work?" },
+  { label: "Library", prompt: "How do I use the library?" },
+  { label: "Announcements", prompt: "How do I post an announcement?" },
+  { label: "Chat & Messaging", prompt: "How does the chat system work?" },
+  { label: "Reset Password", prompt: "How do I reset my password?" },
+  { label: "Manage Schools", prompt: "How do I add or manage schools?" },
+  { label: "Platform Settings", prompt: "How do I configure platform settings?" },
+  { label: "Reports & Stats", prompt: "How do I view reports and statistics?" },
 ];
 
-const WEEKS_OPTIONS = [2, 4, 8];
+interface KBEntry {
+  keywords: string[];
+  answer: string;
+}
+
+const KNOWLEDGE_BASE: KBEntry[] = [
+  {
+    keywords: ["get started", "first time", "new user", "begin", "onboard", "welcome"],
+    answer: `Welcome to **EduIgnite**! Here's how to get started:
+
+1. **Log in** using your matricule and password at the login page.
+2. **Update your profile** — go to the top-right menu → Profile to add your photo and phone number.
+3. **Explore your Dashboard** — your home screen shows stats relevant to your role.
+4. **Navigate using the sidebar** — sections visible to you depend on your role (Student, Teacher, Parent, School Admin, CEO, etc.).
+5. **Need help?** — come back here and ask a question any time!
+
+Common first steps by role:
+- **Students**: Check your grades, attendance, and upcoming live classes.
+- **Teachers**: Take attendance, enter grades, and schedule live classes.
+- **Parents**: View your child's grades, attendance, and fees.
+- **School Admin**: Manage students, teachers, fee structures, and school settings.
+- **CEO/CTO**: Access platform-wide statistics, manage all schools, and configure platform settings.`,
+  },
+  {
+    keywords: ["update profile", "edit profile", "change name", "change phone", "phone number", "profile picture", "avatar", "upload photo", "profile image"],
+    answer: `To update your profile:
+
+1. Click your **avatar / name** in the top-right corner of the dashboard.
+2. Select **"Profile"** from the dropdown menu.
+3. On the Profile page you can:
+   - **Upload a profile picture** — click the camera icon on your avatar and select an image from your device.
+   - **Change your name** — edit the Name field and click Save.
+   - **Add/change your phone number** — fill in the Phone field and click Save.
+   - **Change your password** — use the Change Password section.
+
+All changes are saved automatically to the server. Your profile picture will appear across the platform after saving.`,
+  },
+  {
+    keywords: ["manage student", "add student", "enroll student", "student list", "student record", "student profile"],
+    answer: `Managing students (School Admin / Teacher):
+
+**View Students:**
+- Go to **Students** in the sidebar to see the full list.
+- Filter by class or search by name or matricule.
+
+**Add a Student:**
+1. Click **"Add Student"** button on the Students page.
+2. Fill in the student's details (name, date of birth, class, parent info).
+3. Click **Save** — a matricule is auto-generated.
+
+**View a Student's Profile:**
+- Click on any student's name to open their detailed profile showing grades, attendance, fees, and more.
+
+**Link a Parent:**
+- Open the student's profile → click **"Link Parent"** and enter the parent's matricule.
+
+**Student Card:**
+- Open the student's profile → click **"Download Student Card"** to generate a printable ID card.`,
+  },
+  {
+    keywords: ["attendance", "mark attendance", "take attendance", "absent", "present", "attendance record", "attendance report"],
+    answer: `Managing Attendance (Teachers / School Admin):
+
+**Taking Attendance:**
+1. Go to **Attendance** in the sidebar.
+2. Click **"New Session"** — select the class and date.
+3. Mark each student as Present, Absent, or Late.
+4. Click **"Save Session"** to record it.
+
+**Viewing Attendance:**
+- Go to **Attendance → Records** to see past sessions.
+- Filter by class, date range, or student.
+- Click **"Class Report"** for a full class summary.
+- Click **"Student Summary"** on a student's profile to see their individual attendance history.
+
+**Absent Students Today:**
+- The dashboard shows a quick count of students absent today.
+- Go to Attendance → filter by today for the full list.`,
+  },
+  {
+    keywords: ["grade", "enter grade", "add grade", "grade entry", "report card", "result", "sequence", "subject", "marks", "score"],
+    answer: `Managing Grades (Teachers / School Admin):
+
+**Entering Grades:**
+1. Go to **Grades** in the sidebar.
+2. Select the **Sequence** (exam period) and **Subject**.
+3. Click **"Add Grades"** — you can enter grades one by one or use **Bulk Entry**.
+4. Enter each student's score and click **Save**.
+
+**Viewing Report Cards:**
+1. Open a student's profile.
+2. Click **"Report Card"** → select the sequence.
+3. A printable report card is generated with all subjects and rankings.
+
+**Class Results:**
+- Go to Grades → **Class Results** → select a class and sequence to see the full ranking.
+
+**Subjects & Sequences:**
+- School Admins can create/manage subjects under **Grades → Subjects**.
+- Sequences (exam periods) are managed under **Grades → Sequences**.`,
+  },
+  {
+    keywords: ["fee", "payment", "pay fee", "fee structure", "invoice", "receipt", "outstanding", "revenue", "finance"],
+    answer: `Managing Fees & Payments:
+
+**For Parents / Students:**
+- Go to **Fees → My Payments** to see your payment history and outstanding fees.
+- Click **"Make Payment"** to record a new payment (pending confirmation by admin).
+- Download your **receipt** from a confirmed payment.
+
+**For School Admin / Finance Staff:**
+1. **Create Fee Structures**: Fees → Fee Structures → Add Structure (set amount, class, term).
+2. **Confirm Payments**: Fees → Payments → select a pending payment → click **Confirm** or **Reject**.
+3. **View Outstanding Fees**: Fees → Outstanding to see who hasn't paid.
+4. **Revenue Report**: Fees → Revenue Report for a summary of collections.
+
+**Invoices:**
+- Invoices are auto-generated and accessible under Fees → Invoices.`,
+  },
+  {
+    keywords: ["live class", "online class", "video class", "schedule class", "start class", "join class", "enroll class"],
+    answer: `Using Live Classes:
+
+**For Students:**
+- Go to **Live Classes** in the sidebar.
+- See **Upcoming** classes and click **"Enroll"** to register.
+- When a class is live, click **"Join"** to enter.
+- View your enrolled classes under **"My Classes"**.
+
+**For Teachers:**
+1. Go to **Live Classes → Create Class**.
+2. Fill in the title, subject, date/time, and description.
+3. Click **Save** — students can now enroll.
+4. At the scheduled time, click **"Start Class"** to go live.
+5. Click **"End Class"** when done.
+
+**Live Now:**
+- The **"Live Now"** section shows all currently active classes — no enrollment needed to watch live.`,
+  },
+  {
+    keywords: ["library", "book", "borrow", "loan", "return book", "library book", "issue book", "overdue"],
+    answer: `Using the Library:
+
+**For Students / Staff:**
+- Go to **Library** in the sidebar to browse available books.
+- Search by title, author, or category.
+- Click a book → **"Borrow"** to request it.
+- View your borrowed books under **Library → My Loans**.
+- Return a book by going to My Loans → click **"Return"**.
+
+**For Library Staff / Admin:**
+1. **Add Books**: Library → Books → Add Book (title, author, category, quantity).
+2. **Issue a Book**: Library → Loans → Issue Book → select book and student.
+3. **Manage Returns**: Library → Loans → click **"Mark Returned"**.
+4. **Overdue Books**: Library → Overdue to see all late returns.
+5. **Low Stock Alert**: Library → Low Stock shows books running low.`,
+  },
+  {
+    keywords: ["announcement", "post announcement", "notice", "broadcast", "platform announcement", "school notice", "pinned"],
+    answer: `Managing Announcements:
+
+**Viewing Announcements:**
+- Go to **Announcements** in the sidebar to see all notices relevant to you.
+- Pinned announcements appear at the top.
+- Click **"Mark as Read"** to dismiss a notification.
+
+**Posting an Announcement (Admin / CEO / CTO):**
+1. Go to Announcements → click **"New Announcement"**.
+2. Enter the title and message.
+3. Select the **audience**: All Users, School-specific, Role-specific, or Platform-wide.
+4. Toggle **"Pin"** to keep it at the top.
+5. Click **Publish**.
+
+Note: Only **CEO and CTO** can send platform-wide announcements to all users across all schools.`,
+  },
+  {
+    keywords: ["chat", "message", "messaging", "conversation", "direct message", "send message", "inbox"],
+    answer: `Using the Chat System:
+
+**Starting a Conversation:**
+1. Go to **Chat / Messages** in the sidebar.
+2. Click **"New Conversation"** or the compose icon.
+3. Search for a user by name or role.
+4. Type your message and press **Enter** or click **Send**.
+
+**Receiving Messages:**
+- A badge on the Chat icon shows unread message count.
+- Click any conversation to open it and view the full message history.
+
+**Tips:**
+- Messages are delivered in real-time.
+- You can chat with teachers, parents, admins, or other users within your school.
+- Click a user's name in their profile to start a direct message with them.`,
+  },
+  {
+    keywords: ["reset password", "forgot password", "change password", "lost password", "recover account", "can't login", "cannot login"],
+    answer: `Resetting or Changing Your Password:
+
+**Forgot Password (from login page):**
+1. Go to the **Login page**.
+2. Click **"Forgot Password?"**.
+3. Enter your **Matricule** (e.g. STU001, TCH005).
+4. A password reset link will be sent to your registered email address.
+5. Click the link in the email and set a new password.
+
+**Change Password (when logged in):**
+1. Go to your **Profile** (top-right menu).
+2. Scroll to the **Change Password** section.
+3. Enter your current password, then your new password twice.
+4. Click **Save Changes**.
+
+If you don't have access to your registered email, contact your school administrator.`,
+  },
+  {
+    keywords: ["add school", "manage school", "school list", "create school", "school status", "toggle school", "school admin"],
+    answer: `Managing Schools (CEO / CTO / SUPER ADMIN):
+
+**View All Schools:**
+- Go to **Schools** in the sidebar to see all registered schools.
+- Each school shows its status (Active/Inactive), admin contact, and student count.
+
+**Add a New School:**
+1. Click **"Add School"** on the Schools page.
+2. Fill in: School Name, Address, Contact Email, Phone, and assign a School Admin.
+3. Click **Save** — the school is created and the assigned admin receives login credentials.
+
+**Activate / Deactivate a School:**
+- Open the school → click **"Toggle Status"** to activate or deactivate it.
+- Inactive schools cannot log in until reactivated.
+
+**Edit School Settings:**
+- Open a school → **Settings** to update the school's branding, timezone, or contact info.`,
+  },
+  {
+    keywords: ["platform setting", "configure platform", "platform name", "platform logo", "upload logo", "branding", "platform fee"],
+    answer: `Configuring Platform Settings (CEO / CTO):
+
+**Access Platform Settings:**
+- Go to **Settings → Platform Settings** in the sidebar.
+
+**Update Platform Name & Logo:**
+1. In the **Branding** tab, enter the platform name.
+2. Click **"Upload Logo"** to select an image from your device.
+3. The logo is uploaded to the server and displayed on the login page and header.
+4. Click **Save Changes**.
+
+**Platform Fees:**
+- Go to the **Fees** tab to configure registration/subscription fees by role.
+- Click **Add Fee** or edit existing fees.
+
+**Public Events:**
+- Manage public-facing events shown on the platform's landing page from the **Events** tab.
+
+**Tutorials:**
+- Manage tutorial video links in the **Tutorials** tab for each user role.`,
+  },
+  {
+    keywords: ["report", "statistic", "stats", "overview", "dashboard", "analytics", "performance", "insight", "summary"],
+    answer: `Viewing Reports & Statistics:
+
+**Dashboard Overview:**
+- The **Dashboard home** shows your key metrics at a glance — students, attendance rate, revenue, active schools, etc.
+
+**Detailed Reports by Module:**
+- **Grades**: Go to Grades → Class Results or Annual Results for full performance reports.
+- **Attendance**: Go to Attendance → Class Report for detailed attendance summaries.
+- **Fees**: Go to Fees → Revenue Report for financial summaries.
+- **Library**: Go to Library to see loan statistics and overdue books.
+
+**Platform-Wide Stats (Executives):**
+- The Executive Dashboard shows platform-wide stats: total schools, users, revenue, and more.
+- Click into each stat card for a drill-down view.
+
+**Exporting:**
+- Most report pages have a **Download** or **Export** button to save data as PDF or CSV.`,
+  },
+  {
+    keywords: ["user", "manage user", "add user", "role", "permission", "staff", "teacher", "admin", "update role", "license"],
+    answer: `Managing Users (School Admin / CEO / CTO):
+
+**View Users:**
+- Go to **Users** in the sidebar to see all users in your school (or platform-wide for executives).
+- Filter by role: Teacher, Student, Parent, Staff, etc.
+
+**Add a New User:**
+1. Click **"Add User"** on the Users page.
+2. Fill in the name, email, role, and school.
+3. The system generates a matricule and sends login credentials by email.
+
+**Change a User's Role:**
+- Open the user's profile → click **"Update Role"** and select the new role.
+
+**Toggle License:**
+- Open the user → click **"Toggle License"** to activate or suspend their account access.
+
+**Founders (Executives Only):**
+- Manage platform founders and their share allocations under **Users → Founders**.`,
+  },
+];
+
+const GREETING_KEYWORDS = ["hello", "hi", "hey", "good morning", "good afternoon", "good evening", "howdy", "help"];
+const THANKS_KEYWORDS = ["thank", "thanks", "thank you", "awesome", "great", "perfect", "helpful"];
+
+function getStaticReply(input: string): string {
+  const lower = input.toLowerCase();
+
+  if (GREETING_KEYWORDS.some((k) => lower.includes(k))) {
+    return `Hello! I'm the EduIgnite Platform Guide. I can help you learn how to use any feature of the platform.
+
+Try asking me about:
+- Updating your profile or password
+- Managing students, grades, or attendance
+- Fees and payments
+- Live classes and the library
+- Platform settings and school management
+
+Or click one of the quick-topic buttons below!`;
+  }
+
+  if (THANKS_KEYWORDS.some((k) => lower.includes(k))) {
+    return `You're welcome! If you have any other questions about using EduIgnite, feel free to ask. I'm always here to help!`;
+  }
+
+  // Match knowledge base
+  const matches = KNOWLEDGE_BASE.filter((entry) =>
+    entry.keywords.some((kw) => lower.includes(kw))
+  );
+
+  if (matches.length === 1) {
+    return matches[0].answer;
+  }
+
+  if (matches.length > 1) {
+    // Return the best match (most keyword hits)
+    const scored = matches.map((m) => ({
+      entry: m,
+      score: m.keywords.filter((kw) => lower.includes(kw)).length,
+    }));
+    scored.sort((a, b) => b.score - a.score);
+    return scored[0].entry.answer;
+  }
+
+  return `I'm not sure I have a specific answer for that, but here's what I can help you with:
+
+${FAQ_TOPICS.map((t) => `• ${t.label}`).join("\n")}
+
+Try rephrasing your question, or click one of the quick-topic buttons to learn about a specific feature.`;
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AiAssistantPage() {
   const { user } = useAuth();
-  const { t } = useI18n();
-  const { toast } = useToast();
 
-  // Hooks for fetching requests
-  const { data: requestsResponse, isLoading } = useAIRequests({
-    refetchInterval: false,
-  });
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    {
+      role: "assistant",
+      content: `Hi${user?.name ? ` ${user.name.split(" ")[0]}` : ""}! I'm the **EduIgnite Platform Guide**. I can answer questions about how to use any feature of this platform — no external AI needed.
 
-  // Hooks for insights (executives only)
-  const { data: insightsResponse } = useAIInsights();
-  const { data: platformInsights } = usePlatformInsights();
-
-  // Mutation hooks
-  const studyPlanMutation = useGenerateStudyPlan();
-  const analyzeGradesMutation = useAnalyzeGrades();
-  const examPrepMutation = useExamPrep();
-  const parentReportMutation = useParentReport();
-
-  // Local state
-  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState("chat");
-  const [requestType, setRequestType] = useState<RequestType>("study_plan");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Study plan form
-  const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
-  const [selectedWeeks, setSelectedWeeks] = useState<number>(4);
-
-  // Exam prep form
-  const [selectedSubjectExam, setSelectedSubjectExam] = useState<string>("");
-
-  // General form
-  const [generalPrompt, setGeneralPrompt] = useState<string>("");
-
-  // Child selector for parent report
-  const [selectedChildId, setSelectedChildId] = useState<string>("");
-  const currentStudentId = user?.id ?? "";
-
-  // Direct chat state
-  type ChatMessage = { role: "user" | "assistant"; content: string; ts: number };
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+Ask me anything, or click a quick-topic button below to get started!`,
+      ts: Date.now(),
+    },
+  ]);
   const [chatInput, setChatInput] = useState("");
-  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
-  const scrollChatToBottom = () => {
+  const scrollToBottom = () => {
     setTimeout(() => {
-      if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+      if (chatScrollRef.current) {
+        chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+      }
     }, 80);
   };
 
-  const handleChatSend = useCallback(async () => {
-    const msg = chatInput.trim();
-    if (!msg || isChatLoading) return;
-    setChatInput("");
-    const userMsg: ChatMessage = { role: "user", content: msg, ts: Date.now() };
-    setChatMessages((prev) => [...prev, userMsg]);
-    scrollChatToBottom();
-    setIsChatLoading(true);
-    try {
-      const history = chatMessages.slice(-10).map((m) => ({ role: m.role, content: m.content }));
-      const result = await aiService.directChat(msg, history);
-      setChatMessages((prev) => [...prev, { role: "assistant", content: result.reply, ts: Date.now() }]);
-      scrollChatToBottom();
-    } catch {
-      setChatMessages((prev) => [...prev, { role: "assistant", content: "Sorry, I couldn't process your request. Please try again.", ts: Date.now() }]);
-    } finally {
-      setIsChatLoading(false);
-    }
-  }, [chatInput, chatMessages, isChatLoading]);
+  const sendMessage = useCallback(
+    (text: string) => {
+      const msg = text.trim();
+      if (!msg || isTyping) return;
 
-  // Get requests list
-  const requests = requestsResponse?.results ?? [];
+      setChatInput("");
+      setChatMessages((prev) => [...prev, { role: "user", content: msg, ts: Date.now() }]);
+      scrollToBottom();
+      setIsTyping(true);
 
-  // Auto-select most recent request on load
-  useEffect(() => {
-    if (requests.length > 0 && !selectedRequestId) {
-      setSelectedRequestId(requests[0].id);
-    }
-  }, [requests, selectedRequestId]);
-
-  // Get selected request details
-  const selectedRequest = requests.find((r) => r.id === selectedRequestId);
-
-  // Check for pending requests for polling
-  const hasPending = requests.some(
-    (r) => r.status === "pending" || r.status === "processing"
+      // Simulate a short "thinking" delay for natural feel
+      setTimeout(() => {
+        const reply = getStaticReply(msg);
+        setChatMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: reply, ts: Date.now() },
+        ]);
+        setIsTyping(false);
+        scrollToBottom();
+      }, 400);
+    },
+    [isTyping]
   );
 
-  // Update polling interval when pending status changes
-  useEffect(() => {
-    // This would require re-configuring the hook, but the pattern
-    // shows that the caller should check hasPending
-  }, [hasPending]);
+  const handleSend = () => sendMessage(chatInput);
 
-  const handleGenerateStudyPlan = async () => {
-    if (selectedSubjects.length === 0) {
-      toast({
-        title: "Please select subjects",
-        description: "Choose at least one subject for your study plan",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      await studyPlanMutation.mutateAsync({
-        studentId: currentStudentId,
-        subjects: selectedSubjects,
-        weeks: selectedWeeks,
-      });
-      toast({
-        title: "Study plan requested",
-        description: "Your AI study plan is being generated...",
-      });
-      setSelectedSubjects([]);
-      setSelectedWeeks(4);
-      setRequestType("study_plan");
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description:
-          error?.response?.data?.message ||
-          "Failed to generate study plan",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
     }
   };
 
-  const handleAnalyzeGrades = async () => {
-    setIsSubmitting(true);
-    try {
-      await analyzeGradesMutation.mutateAsync({
-        studentId: currentStudentId,
-        sequenceId: "current",
-      });
-      toast({
-        title: "Grade analysis requested",
-        description: "Your grades are being analyzed...",
-      });
-      setRequestType("grade_analysis");
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description:
-          error?.response?.data?.message || "Failed to analyze grades",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleExamPrep = async () => {
-    if (!selectedSubjectExam) {
-      toast({
-        title: "Please select a subject",
-        description: "Choose a subject for exam preparation",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      await examPrepMutation.mutateAsync({
-        studentId: currentStudentId,
-        subject_id: selectedSubjectExam,
-      });
-      toast({
-        title: "Exam prep requested",
-        description: "Your exam preparation plan is being generated...",
-      });
-      setSelectedSubjectExam("");
-      setRequestType("exam_prep");
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description:
-          error?.response?.data?.message ||
-          "Failed to generate exam prep",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleParentReport = async () => {
-    if (!selectedChildId) {
-      toast({
-        title: "Please select a child",
-        description: "Choose a child to generate report for",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      await parentReportMutation.mutateAsync({
-        studentId: selectedChildId,
-        student_id: selectedChildId,
-      });
-      toast({
-        title: "Parent report requested",
-        description: "Your child's report is being generated...",
-      });
-      setSelectedChildId("");
-      setRequestType("parent_report");
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description:
-          error?.response?.data?.message ||
-          "Failed to generate parent report",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleGeneralRequest = async () => {
-    if (!generalPrompt.trim()) {
-      toast({
-        title: "Please enter a prompt",
-        description: "Type your question or request",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      // Note: general requests would use a separate mutation if available
-      // For now, this is a placeholder pattern
-      toast({
-        title: "Request submitted",
-        description: "Your request is being processed...",
-      });
-      setGeneralPrompt("");
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error?.response?.data?.message || "Failed to submit request",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const toggleSubject = (subject: string) => {
-    setSelectedSubjects((prev) =>
-      prev.includes(subject)
-        ? prev.filter((s) => s !== subject)
-        : [...prev, subject]
+  // Simple markdown-like renderer (bold **text**)
+  const renderContent = (text: string) => {
+    const parts = text.split(/(\*\*[^*]+\*\*)/g);
+    return parts.map((part, i) =>
+      part.startsWith("**") && part.endsWith("**") ? (
+        <strong key={i}>{part.slice(2, -2)}</strong>
+      ) : (
+        <span key={i}>{part}</span>
+      )
     );
   };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "pending":
-        return (
-          <Badge variant="outline" className="text-yellow-600 border-yellow-300">
-            Queued
-          </Badge>
-        );
-      case "processing":
-        return (
-          <Badge className="bg-blue-100 text-blue-700">
-            <Loader2 className="w-3 h-3 animate-spin mr-1" />
-            Processing
-          </Badge>
-        );
-      case "completed":
-        return (
-          <Badge className="bg-green-100 text-green-700">Completed</Badge>
-        );
-      case "failed":
-        return <Badge variant="destructive">Failed</Badge>;
-      default:
-        return null;
-    }
-  };
-
-  const getRequestTypeIcon = (type: string) => {
-    switch (type) {
-      case "study_plan":
-        return <BookMarked className="w-4 h-4" />;
-      case "grade_analysis":
-        return <FileText className="w-4 h-4" />;
-      case "exam_prep":
-        return <Lightbulb className="w-4 h-4" />;
-      case "parent_report":
-        return <Users className="w-4 h-4" />;
-      default:
-        return <MessageSquare className="w-4 h-4" />;
-    }
-  };
-
-  const getRequestTypeLabel = (type: string) => {
-    switch (type) {
-      case "study_plan":
-        return "Study Plan";
-      case "grade_analysis":
-        return "Grade Analysis";
-      case "exam_prep":
-        return "Exam Prep";
-      case "parent_report":
-        return "Parent Report";
-      default:
-        return "General Request";
-    }
-  };
-
-  // Role-based visibility
-  const canGenerateStudyPlan =
-    user?.role === "STUDENT" || user?.role === "SCHOOL_ADMIN" || user?.role === "SUB_ADMIN" || user?.role === "CEO" || user?.role === "CTO";
-  const canAnalyzeGrades =
-    user?.role === "STUDENT" ||
-    user?.role === "PARENT" ||
-    user?.role === "TEACHER" ||
-    user?.role === "SCHOOL_ADMIN" ||
-    user?.role === "SUB_ADMIN" ||
-    user?.role === "CEO" ||
-    user?.role === "CTO";
-  const canExamPrep =
-    user?.role === "STUDENT" || user?.role === "SCHOOL_ADMIN" || user?.role === "SUB_ADMIN" || user?.role === "CEO" || user?.role === "CTO";
-  const canParentReport = user?.role === "PARENT";
-  const isExecutive =
-    user?.role === "CEO" || user?.role === "CTO" || user?.role === "SUPER_ADMIN";
-
-  const renderNewRequestForm = () => {
-    return (
-      <Card className="border-none shadow-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Plus className="w-5 h-5 text-primary" />
-            New AI Request
-          </CardTitle>
-          <CardDescription>
-            Generate insights tailored to your role
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Request Type Selector */}
-          <div className="space-y-3">
-            <label className="text-sm font-semibold text-foreground">
-              Request Type
-            </label>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-              {canGenerateStudyPlan && (
-                <Button
-                  variant={requestType === "study_plan" ? "default" : "outline"}
-                  onClick={() => setRequestType("study_plan")}
-                  className="flex items-center gap-2 h-auto py-3"
-                >
-                  <BookMarked className="w-4 h-4" />
-                  <span className="text-xs">Study Plan</span>
-                </Button>
-              )}
-              {canAnalyzeGrades && (
-                <Button
-                  variant={requestType === "grade_analysis" ? "default" : "outline"}
-                  onClick={() => setRequestType("grade_analysis")}
-                  className="flex items-center gap-2 h-auto py-3"
-                >
-                  <FileText className="w-4 h-4" />
-                  <span className="text-xs">Grade Analysis</span>
-                </Button>
-              )}
-              {canExamPrep && (
-                <Button
-                  variant={requestType === "exam_prep" ? "default" : "outline"}
-                  onClick={() => setRequestType("exam_prep")}
-                  className="flex items-center gap-2 h-auto py-3"
-                >
-                  <Lightbulb className="w-4 h-4" />
-                  <span className="text-xs">Exam Prep</span>
-                </Button>
-              )}
-              {canParentReport && (
-                <Button
-                  variant={requestType === "parent_report" ? "default" : "outline"}
-                  onClick={() => setRequestType("parent_report")}
-                  className="flex items-center gap-2 h-auto py-3"
-                >
-                  <Users className="w-4 h-4" />
-                  <span className="text-xs">Parent Report</span>
-                </Button>
-              )}
-              <Button
-                variant={requestType === "general" ? "default" : "outline"}
-                onClick={() => setRequestType("general")}
-                className="flex items-center gap-2 h-auto py-3"
-              >
-                <MessageSquare className="w-4 h-4" />
-                <span className="text-xs">General</span>
-              </Button>
-            </div>
-          </div>
-
-          {/* Dynamic Form Fields */}
-          {requestType === "study_plan" && (
-            <div className="space-y-3">
-              <label className="text-sm font-semibold text-foreground">
-                Select Subjects
-              </label>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {SUBJECTS.map((subject) => (
-                  <label
-                    key={subject}
-                    className="flex items-center gap-2 p-2 rounded-lg border border-accent hover:bg-accent/30 cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedSubjects.includes(subject)}
-                      onChange={() => toggleSubject(subject)}
-                      className="w-4 h-4 rounded"
-                    />
-                    <span className="text-sm text-foreground">{subject}</span>
-                  </label>
-                ))}
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-foreground">
-                  Duration (weeks)
-                </label>
-                <div className="flex gap-2">
-                  {WEEKS_OPTIONS.map((weeks) => (
-                    <Button
-                      key={weeks}
-                      variant={selectedWeeks === weeks ? "default" : "outline"}
-                      onClick={() => setSelectedWeeks(weeks)}
-                      className="flex-1"
-                    >
-                      {weeks}w
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {requestType === "grade_analysis" && (
-            <div className="p-4 bg-accent/20 rounded-lg border border-accent/50">
-              <p className="text-sm text-foreground">
-                Click below to analyze your current grades and get insights.
-              </p>
-            </div>
-          )}
-
-          {requestType === "exam_prep" && (
-            <div className="space-y-3">
-              <label className="text-sm font-semibold text-foreground">
-                Select Subject
-              </label>
-              <Select value={selectedSubjectExam} onValueChange={setSelectedSubjectExam}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a subject..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {SUBJECTS.map((subject) => (
-                    <SelectItem key={subject} value={subject}>
-                      {subject}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {requestType === "parent_report" && (
-            <div className="space-y-3">
-              <label className="text-sm font-semibold text-foreground">
-                Select Child
-              </label>
-              <Select value={selectedChildId} onValueChange={setSelectedChildId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose your child..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {/* This would be populated from user's children data */}
-                  <SelectItem value="child1">Child 1</SelectItem>
-                  <SelectItem value="child2">Child 2</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {requestType === "general" && (
-            <div className="space-y-3">
-              <label className="text-sm font-semibold text-foreground">
-                Your Question
-              </label>
-              <textarea
-                value={generalPrompt}
-                onChange={(e) => setGeneralPrompt(e.target.value)}
-                placeholder="Ask anything you'd like help with..."
-                className="w-full h-24 p-3 rounded-lg border border-accent bg-white text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary focus:border-transparent"
-              />
-            </div>
-          )}
-        </CardContent>
-        <CardFooter>
-          <Button
-            onClick={() => {
-              switch (requestType) {
-                case "study_plan":
-                  handleGenerateStudyPlan();
-                  break;
-                case "grade_analysis":
-                  handleAnalyzeGrades();
-                  break;
-                case "exam_prep":
-                  handleExamPrep();
-                  break;
-                case "parent_report":
-                  handleParentReport();
-                  break;
-                case "general":
-                  handleGeneralRequest();
-                  break;
-              }
-            }}
-            disabled={
-              isSubmitting ||
-              (requestType === "study_plan" && selectedSubjects.length === 0) ||
-              (requestType === "exam_prep" && !selectedSubjectExam) ||
-              (requestType === "parent_report" && !selectedChildId) ||
-              (requestType === "general" && !generalPrompt.trim())
-            }
-            className="w-full"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Submitting...
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4 mr-2" />
-                Submit Request
-              </>
-            )}
-          </Button>
-        </CardFooter>
-      </Card>
-    );
-  };
-
-  const renderLoadingSkeleton = () => (
-    <div className="space-y-3">
-      <div className="h-12 bg-accent/20 rounded-lg animate-pulse" />
-      <div className="h-12 bg-accent/20 rounded-lg animate-pulse" />
-      <div className="h-12 bg-accent/20 rounded-lg animate-pulse" />
-    </div>
-  );
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] gap-6">
+    <div className="flex flex-col h-[calc(100vh-140px)] gap-4">
       {/* Header */}
       <div className="shrink-0">
         <h1 className="text-3xl font-bold text-primary font-headline flex items-center gap-2">
           <div className="p-2 bg-primary rounded-xl shadow-lg">
             <Sparkles className="w-6 h-6 text-secondary fill-secondary/20" />
           </div>
-          AI Assistant
+          Platform Guide
         </h1>
         <p className="text-muted-foreground mt-1">
-          Manage and track your AI-powered insights
+          Interactive help &amp; how-to guide for EduIgnite
         </p>
       </div>
 
-      {/* Tabs Container */}
-      <Tabs
-        value={activeTab}
-        onValueChange={setActiveTab}
-        className="flex-1 flex flex-col min-h-0"
-      >
-        <TabsList className="grid w-full grid-cols-3 md:grid-cols-4">
-          <TabsTrigger value="chat" className="flex items-center gap-1.5">
-            <MessageSquare className="w-3.5 h-3.5" /> Chat
-          </TabsTrigger>
-          <TabsTrigger value="history">Request History</TabsTrigger>
-          <TabsTrigger value="new">New Request</TabsTrigger>
-          {isExecutive && (
-            <TabsTrigger value="insights" className="hidden md:inline-flex">
-              Insights
-            </TabsTrigger>
-          )}
-        </TabsList>
-
-        {/* Direct Chat Tab */}
-        <TabsContent value="chat" className="flex-1 flex flex-col min-h-0">
-          <Card className="flex-1 flex flex-col border-none shadow-lg min-h-[60vh]">
-            <CardHeader className="border-b shrink-0">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Sparkles className="w-5 h-5 text-primary" /> EduIgnite AI
+      <div className="flex-1 flex gap-4 min-h-0">
+        {/* Quick Topics Sidebar */}
+        <div className="hidden lg:flex flex-col w-56 shrink-0 gap-2">
+          <Card className="border-none shadow-lg flex-1">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-1.5">
+                <BookOpen className="w-4 h-4 text-primary" />
+                Quick Topics
               </CardTitle>
-              <CardDescription className="text-xs">
-                Powered by Groq — ask anything about education, school management, or student progress.
-              </CardDescription>
             </CardHeader>
-            <ScrollArea className="flex-1 p-4" ref={chatScrollRef as any}>
-              {chatMessages.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-40 gap-3 text-center">
-                  <Sparkles className="w-10 h-10 text-primary/20" />
-                  <p className="text-sm text-muted-foreground">Start a conversation with the EduIgnite AI assistant.</p>
-                </div>
-              )}
-              <div className="space-y-4">
-                {chatMessages.map((msg) => (
-                  <div key={msg.ts} className={cn("flex", msg.role === "user" ? "justify-end" : "justify-start")}>
-                    <div className={cn(
-                      "max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap",
-                      msg.role === "user"
-                        ? "bg-primary text-white rounded-br-sm"
-                        : "bg-accent/50 text-primary rounded-bl-sm border border-primary/10"
-                    )}>
-                      {msg.content}
-                    </div>
-                  </div>
-                ))}
-                {isChatLoading && (
-                  <div className="flex justify-start">
-                    <div className="px-4 py-3 rounded-2xl bg-accent/50 border border-primary/10 flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin text-primary/40" />
-                      <span className="text-xs text-muted-foreground">Thinking…</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
-            <div className="p-3 border-t shrink-0">
-              <div className="flex gap-2">
-                <Input
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleChatSend(); } }}
-                  placeholder="Ask anything..."
-                  className="flex-1 bg-accent/30 border-none rounded-2xl h-11 text-sm"
-                  disabled={isChatLoading}
-                />
-                <Button
-                  onClick={handleChatSend}
-                  disabled={!chatInput.trim() || isChatLoading}
-                  size="icon"
-                  className="h-11 w-11 rounded-2xl bg-primary text-white shadow-lg shrink-0"
-                >
-                  {isChatLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                </Button>
-              </div>
-            </div>
-          </Card>
-        </TabsContent>
-
-        {/* History Tab */}
-        <TabsContent value="history" className="flex-1 flex flex-col min-h-0 gap-4">
-          <div className="flex-1 flex gap-4 min-h-0">
-            {/* Requests List */}
-            <Card className="border-none shadow-lg w-full md:w-96 flex flex-col">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-primary" />
-                  Requests
-                </CardTitle>
-              </CardHeader>
-              <ScrollArea className="flex-1">
-                <div className="space-y-2 p-4">
-                  {isLoading ? (
-                    renderLoadingSkeleton()
-                  ) : requests.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <MessageSquare className="w-8 h-8 mx-auto opacity-30 mb-2" />
-                      <p className="text-sm">No requests yet</p>
-                    </div>
-                  ) : (
-                    requests.map((request) => (
-                      <div
-                        key={request.id}
-                        onClick={() => setSelectedRequestId(request.id)}
-                        className={cn(
-                          "p-3 rounded-lg border cursor-pointer transition-all hover:shadow-md",
-                          selectedRequestId === request.id
-                            ? "bg-primary/10 border-primary shadow-md"
-                            : "bg-white border-accent hover:border-accent/70"
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            {getRequestTypeIcon(request.request_type)}
-                            <span className="font-semibold text-sm truncate">
-                              {getRequestTypeLabel(request.request_type)}
-                            </span>
-                          </div>
-                          {getStatusBadge(request.status)}
-                        </div>
-                        <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
-                          {request.prompt}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground/60">
-                          {new Date(request.created_at).toLocaleString()}
-                        </p>
-                      </div>
-                    ))
-                  )}
+            <CardContent className="p-2 pt-0">
+              <ScrollArea className="h-full max-h-[calc(100vh-280px)]">
+                <div className="space-y-1">
+                  {FAQ_TOPICS.map((topic) => (
+                    <Button
+                      key={topic.label}
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start text-xs h-8 px-2 text-muted-foreground hover:text-primary hover:bg-primary/5"
+                      onClick={() => sendMessage(topic.prompt)}
+                    >
+                      <ChevronRight className="w-3 h-3 mr-1 shrink-0" />
+                      {topic.label}
+                    </Button>
+                  ))}
                 </div>
               </ScrollArea>
-            </Card>
+            </CardContent>
+          </Card>
+        </div>
 
-            {/* Request Details */}
-            <Card className="border-none shadow-lg flex-1 hidden md:flex flex-col">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MessageSquare className="w-5 h-5 text-primary" />
-                  Details
-                </CardTitle>
-              </CardHeader>
-              {selectedRequest ? (
-                <ScrollArea className="flex-1">
-                  <div className="p-6 space-y-6">
-                    {/* Request Info */}
-                    <div>
-                      <h3 className="font-semibold text-lg mb-2 flex items-center gap-2">
-                        {getRequestTypeIcon(selectedRequest.request_type)}
-                        {getRequestTypeLabel(selectedRequest.request_type)}
-                      </h3>
-                      <div className="flex items-center justify-between mb-3">
-                        <p className="text-sm text-muted-foreground">
-                          {new Date(
-                            selectedRequest.created_at
-                          ).toLocaleString()}
-                        </p>
-                        {getStatusBadge(selectedRequest.status)}
-                      </div>
-                    </div>
+        {/* Chat Window */}
+        <Card className="flex-1 flex flex-col border-none shadow-lg min-h-0">
+          <CardHeader className="border-b shrink-0 py-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Sparkles className="w-5 h-5 text-primary" />
+                EduIgnite Platform Guide
+              </CardTitle>
+              <Badge variant="outline" className="text-xs text-green-600 border-green-300">
+                Online
+              </Badge>
+            </div>
+            <CardDescription className="text-xs">
+              Ask me how to use any feature of the platform
+            </CardDescription>
+          </CardHeader>
 
-                    {/* Prompt */}
-                    <div>
-                      <h4 className="font-semibold text-sm mb-2">Prompt</h4>
-                      <div className="bg-accent/20 rounded-lg p-4 text-sm text-foreground whitespace-pre-wrap">
-                        {selectedRequest.prompt}
-                      </div>
-                    </div>
-
-                    {/* Response */}
-                    {selectedRequest.status === "processing" ||
-                    selectedRequest.status === "pending" ? (
-                      <div className="space-y-3">
-                        <h4 className="font-semibold text-sm">Response</h4>
-                        <div className="bg-accent/10 rounded-lg p-6 flex items-center justify-center min-h-32">
-                          <div className="text-center">
-                            <Loader2 className="w-8 h-8 text-primary animate-spin mx-auto mb-2" />
-                            <p className="text-sm text-muted-foreground">
-                              AI is thinking...
-                            </p>
-                            <p className="text-xs text-muted-foreground/70 mt-1">
-                              This may take a moment
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ) : selectedRequest.response ? (
-                      <div>
-                        <h4 className="font-semibold text-sm mb-2">Response</h4>
-                        <div className="bg-accent/10 rounded-lg p-4 text-sm text-foreground space-y-3">
-                          {selectedRequest.response
-                            .split("\n\n")
-                            .filter((p) => p.trim())
-                            .map((paragraph, idx) => (
-                              <p key={idx} className="whitespace-pre-wrap">
-                                {paragraph}
-                              </p>
-                            ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="bg-accent/10 rounded-lg p-4 text-sm text-muted-foreground">
-                        No response available
-                      </div>
+          {/* Messages */}
+          <ScrollArea className="flex-1 p-4" ref={chatScrollRef as any}>
+            <div className="space-y-4">
+              {chatMessages.map((msg) => (
+                <div
+                  key={msg.ts}
+                  className={cn("flex", msg.role === "user" ? "justify-end" : "justify-start")}
+                >
+                  <div
+                    className={cn(
+                      "max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap",
+                      msg.role === "user"
+                        ? "bg-primary text-white rounded-br-sm"
+                        : "bg-accent/50 text-foreground rounded-bl-sm border border-primary/10"
                     )}
+                  >
+                    {renderContent(msg.content)}
                   </div>
-                </ScrollArea>
-              ) : (
-                <div className="flex-1 flex items-center justify-center">
-                  <div className="text-center text-muted-foreground">
-                    <MessageSquare className="w-8 h-8 mx-auto opacity-30 mb-2" />
-                    <p className="text-sm">Select a request to view details</p>
+                </div>
+              ))}
+
+              {isTyping && (
+                <div className="flex justify-start">
+                  <div className="px-4 py-3 rounded-2xl bg-accent/50 border border-primary/10 flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-primary/40" />
+                    <span className="text-xs text-muted-foreground">Thinking…</span>
                   </div>
                 </div>
               )}
-            </Card>
+            </div>
+          </ScrollArea>
+
+          {/* Quick topic chips (mobile) */}
+          <div className="lg:hidden px-3 pb-2 flex gap-2 overflow-x-auto scrollbar-none">
+            {FAQ_TOPICS.slice(0, 6).map((topic) => (
+              <Button
+                key={topic.label}
+                variant="outline"
+                size="sm"
+                className="shrink-0 text-xs h-7 rounded-full border-primary/30 text-primary"
+                onClick={() => sendMessage(topic.prompt)}
+              >
+                {topic.label}
+              </Button>
+            ))}
           </div>
-        </TabsContent>
 
-        {/* New Request Tab */}
-        <TabsContent value="new" className="flex-1 overflow-y-auto">
-          {renderNewRequestForm()}
-        </TabsContent>
-
-        {/* Insights Tab (Executives Only) */}
-        {isExecutive && (
-          <TabsContent value="insights" className="flex-1 overflow-y-auto">
-            <Card className="border-none shadow-lg">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-primary" />
-                  Platform Insights
-                </CardTitle>
-                <CardDescription>
-                  AI-generated insights for platform executives
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {isLoading ? (
-                  renderLoadingSkeleton()
-                ) : !insightsResponse ||
-                  (Array.isArray(insightsResponse) &&
-                    insightsResponse.length === 0) ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Lightbulb className="w-8 h-8 mx-auto opacity-30 mb-2" />
-                    <p className="text-sm">No insights available yet</p>
-                  </div>
+          {/* Input */}
+          <div className="p-3 border-t shrink-0">
+            <div className="flex gap-2">
+              <Input
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask about any EduIgnite feature…"
+                className="flex-1 bg-accent/30 border-none rounded-2xl h-11 text-sm"
+                disabled={isTyping}
+              />
+              <Button
+                onClick={handleSend}
+                disabled={!chatInput.trim() || isTyping}
+                size="icon"
+                className="h-11 w-11 rounded-2xl bg-primary text-white shadow-lg shrink-0"
+              >
+                {isTyping ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {Array.isArray(insightsResponse) &&
-                      insightsResponse.map((insight) => (
-                        <Card
-                          key={insight.id}
-                          className="border-none shadow-md bg-accent/5"
-                        >
-                          <CardHeader>
-                            <div className="flex items-start justify-between gap-2 mb-2">
-                              <CardTitle className="text-base">
-                                {insight.title}
-                              </CardTitle>
-                              <Badge variant="outline">
-                                {insight.insight_type}
-                              </Badge>
-                            </div>
-                            <CardDescription>
-                              {insight.description}
-                            </CardDescription>
-                          </CardHeader>
-                          {insight.data && (
-                            <CardContent>
-                              <div className="text-sm text-foreground bg-white rounded-lg p-3">
-                                {typeof insight.data === "string"
-                                  ? insight.data
-                                  : JSON.stringify(insight.data, null, 2)}
-                              </div>
-                            </CardContent>
-                          )}
-                          {insight.expires_at && (
-                            <CardFooter className="text-xs text-muted-foreground">
-                              Expires:{" "}
-                              {new Date(
-                                insight.expires_at
-                              ).toLocaleDateString()}
-                            </CardFooter>
-                          )}
-                        </Card>
-                      ))}
-                  </div>
+                  <Send className="w-4 h-4" />
                 )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
-      </Tabs>
+              </Button>
+            </div>
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

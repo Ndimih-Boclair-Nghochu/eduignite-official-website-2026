@@ -154,21 +154,28 @@ export default function PlatformSettingsPage() {
     }
   };
 
-  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      toast({ variant: "destructive", title: "File too large", description: "Please select an image smaller than 2MB." });
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ variant: "destructive", title: "File too large", description: "Please select an image smaller than 5MB." });
       return;
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setFormData((prev) => ({ ...prev, platformLogo: reader.result as string }));
-      toast({ title: "Logo Processed", description: "Identity preview updated locally." });
-    };
-    reader.readAsDataURL(file);
+    // Show preview immediately
+    const previewUrl = URL.createObjectURL(file);
+    setFormData((prev) => ({ ...prev, platformLogo: previewUrl }));
+
+    try {
+      const result = await platformService.uploadLogo(file);
+      setFormData((prev) => ({ ...prev, platformLogo: result.logo_url }));
+      queryClient.invalidateQueries({ queryKey: ["platform", "settings"] });
+      toast({ title: "Logo Uploaded", description: "Platform logo has been saved." });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Upload Failed", description: err?.response?.data?.detail || "Could not upload logo." });
+      setFormData((prev) => ({ ...prev, platformLogo: formData.platformLogo }));
+    }
   };
 
   const handleUpdateSettings = () => {

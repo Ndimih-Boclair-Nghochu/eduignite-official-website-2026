@@ -80,7 +80,7 @@ class MatriculeLoginView(APIView):
                 'name': user.name,
                 'email': user.email,
                 'role': user.role,
-                'avatar': user.avatar.url if user.avatar else None,
+                'avatar': user.avatar or None,
             },
         }
 
@@ -149,7 +149,7 @@ class FirebaseLoginView(APIView):
                 'name': user.name,
                 'email': user.email,
                 'role': user.role,
-                'avatar': user.avatar.url if user.avatar else None,
+                'avatar': user.avatar or None,
             },
         }
 
@@ -306,10 +306,11 @@ class PasswordResetRequestView(APIView):
         serializer = PasswordResetRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        email = serializer.validated_data['email']
+        matricule = serializer.validated_data['matricule']
 
         try:
-            user = User.objects.get(email=email)
+            user = User.objects.get(matricule=matricule)
+            email = user.email
             from rest_framework_simplejwt.tokens import RefreshToken
             from django.core.mail import send_mail
             from django.conf import settings as django_settings
@@ -384,11 +385,11 @@ class PasswordResetRequestView(APIView):
                 logger.error(f"Failed to send password reset email to {email}: {mail_err}")
 
         except User.DoesNotExist:
-            pass  # Don't leak whether the email exists
+            pass  # Don't leak whether the matricule exists
 
         # Always return the same response regardless of whether user exists
         return Response(
-            {'detail': 'If an account with that email exists, a password reset link has been sent.'},
+            {'detail': 'If an account with that matricule exists, a password reset link has been sent.'},
             status=status.HTTP_200_OK,
         )
 
@@ -486,7 +487,7 @@ class MeView(APIView):
                 'whatsapp': user.whatsapp or '',
                 'role': user.role,
                 'school': school_data,
-                'avatar': user.avatar.url if user.avatar else None,
+                'avatar': user.avatar or None,
                 'is_license_paid': user.is_license_paid,
                 'ai_request_count': user.ai_request_count,
                 'is_active': user.is_active,

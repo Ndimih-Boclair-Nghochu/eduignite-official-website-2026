@@ -5,8 +5,11 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Sum
+from django.conf import settings as django_settings
 from drf_spectacular.utils import extend_schema
 import logging
+import os
+import uuid
 
 from .models import PlatformSettings, PlatformFees, PublicEvent, TutorialLink
 from .serializers import (
@@ -58,6 +61,43 @@ class PlatformSettingsView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class PlatformLogoUploadView(APIView):
+    """
+    POST /platform/upload-logo/
+    Upload a logo image file and store as the platform logo.
+    """
+    permission_classes = [IsExecutive]
+
+    def post(self, request):
+        file = request.FILES.get('logo')
+        if not file:
+            return Response({'detail': 'No file provided'}, status=400)
+
+        allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml']
+        if file.content_type not in allowed_types:
+            return Response({'detail': 'Invalid file type. Use JPEG, PNG, GIF, WebP or SVG.'}, status=400)
+
+        if file.size > 5 * 1024 * 1024:
+            return Response({'detail': 'File too large. Maximum size is 5MB.'}, status=400)
+
+        ext = os.path.splitext(file.name)[1].lower() or '.png'
+        filename = f'platform_logo_{uuid.uuid4().hex}{ext}'
+        logo_dir = os.path.join(django_settings.MEDIA_ROOT, 'platform')
+        os.makedirs(logo_dir, exist_ok=True)
+        filepath = os.path.join(logo_dir, filename)
+
+        with open(filepath, 'wb+') as dest:
+            for chunk in file.chunks():
+                dest.write(chunk)
+
+        logo_url = request.build_absolute_uri(f'{django_settings.MEDIA_URL}platform/{filename}')
+        settings = PlatformSettings.load()
+        settings.logo = logo_url
+        settings.save(update_fields=['logo'])
+
+        return Response({'logo_url': logo_url}, status=200)
 
 
 class PlatformFeesViewSet(viewsets.ModelViewSet):

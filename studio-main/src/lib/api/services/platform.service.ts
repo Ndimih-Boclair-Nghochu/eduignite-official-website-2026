@@ -19,6 +19,15 @@ export const platformService = {
     return data;
   },
 
+  async uploadLogo(file: File): Promise<{ logo_url: string }> {
+    const formData = new FormData();
+    formData.append('logo', file);
+    const { data } = await apiClient.post(API.PLATFORM.UPLOAD_LOGO, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  },
+
   async getPlatformFees(params?: ListParams): Promise<PaginatedResponse<any>> {
     const { data } = await apiClient.get(API.PLATFORM.FEES, { params });
     return data;

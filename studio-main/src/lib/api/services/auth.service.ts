@@ -170,8 +170,8 @@ export const authService = {
     return data;
   },
 
-  async requestPasswordReset(email: string): Promise<{ detail: string }> {
-    const { data } = await apiClient.post(API.AUTH.PASSWORD_RESET, { email });
+  async requestPasswordReset(matricule: string): Promise<{ detail: string }> {
+    const { data } = await apiClient.post(API.AUTH.PASSWORD_RESET, { matricule });
     return data;
   },
 

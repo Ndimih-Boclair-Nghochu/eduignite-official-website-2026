@@ -120,8 +120,7 @@ const useToggleSchoolStatus = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const { data } = await schoolsService.toggleSchoolStatus(id, { status });
-      return data;
+      return schoolsService.toggleSchoolStatus(id, { status });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["schools"] });

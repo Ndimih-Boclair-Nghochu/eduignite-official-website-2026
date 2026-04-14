@@ -64,7 +64,7 @@ class TokenResponseSerializer(serializers.Serializer):
             'name': user.name,
             'email': user.email,
             'role': user.role,
-            'avatar': user.avatar.url if user.avatar else None,
+            'avatar': user.avatar or None,
         }
 
 
@@ -162,20 +162,20 @@ class ChangePasswordSerializer(serializers.Serializer):
     examples=[
         OpenApiExample(
             'Password Reset Request',
-            value={'email': 'user@example.com'},
+            value={'matricule': 'STU001'},
         ),
     ]
 )
 class PasswordResetRequestSerializer(serializers.Serializer):
     """
-    Serializer for initiating password reset flow.
+    Serializer for initiating password reset flow via matricule.
     """
-    email = serializers.EmailField()
+    matricule = serializers.CharField(max_length=50)
 
-    def validate_email(self, value):
-        """Validate email exists."""
-        if not User.objects.filter(email=value).exists():
-            raise serializers.ValidationError('User with this email does not exist.')
+    def validate_matricule(self, value):
+        """Validate matricule exists."""
+        if not User.objects.filter(matricule=value).exists():
+            raise serializers.ValidationError('No account found with this matricule.')
         return value
 
 

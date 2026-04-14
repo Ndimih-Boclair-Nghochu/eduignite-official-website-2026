@@ -132,19 +132,19 @@ export default function LoginPage() {
         setIsProcessing(false);
       }
     } else if (mode === "forgot") {
-      if (!authData.email.trim()) {
-        toast({ variant: "destructive", title: "Email required", description: "Please enter your account email." });
+      if (!authData.matricule.trim()) {
+        toast({ variant: "destructive", title: "Matricule required", description: "Please enter your account matricule." });
         setIsProcessing(false);
         return;
       }
       try {
-        await authService.requestPasswordReset(authData.email.trim());
+        await authService.requestPasswordReset(authData.matricule.trim());
         setAuthMode("success");
         toast({ title: "Reset email sent", description: "Check your inbox for a password reset link." });
       } catch {
-        // Always show success to avoid leaking whether email exists
+        // Always show success to avoid leaking whether matricule exists
         setAuthMode("success");
-        toast({ title: "Reset email sent", description: "If that email is registered, a reset link has been sent." });
+        toast({ title: "Reset email sent", description: "If that matricule is registered, a reset link has been sent." });
       } finally {
         setIsProcessing(false);
       }
@@ -206,7 +206,11 @@ export default function LoginPage() {
       <div className="w-full max-w-lg flex flex-col items-center gap-10 relative z-10">
         <div className="flex flex-col items-center text-center space-y-4">
           <div className="bg-primary p-4 rounded-[2.5rem] shadow-2xl w-24 h-24 flex items-center justify-center overflow-hidden border-4 border-white transition-all hover:scale-105 active:scale-95 cursor-pointer">
-            <Building2 className="w-12 h-12 text-secondary" />
+            {platformSettings.logo ? (
+              <img src={platformSettings.logo} alt={platformSettings.name} className="w-full h-full object-contain" />
+            ) : (
+              <Building2 className="w-12 h-12 text-secondary" />
+            )}
           </div>
           <div className="space-y-1">
             <h1 className="text-5xl md:text-6xl font-black text-primary font-headline tracking-tighter leading-none">
@@ -272,20 +276,21 @@ export default function LoginPage() {
                   {mode === "forgot" && (
                     <div className="space-y-6 animate-in slide-in-from-top-2">
                       <p className="text-sm text-center text-muted-foreground">
-                        Enter your account email and we'll send you a password reset link.
+                        Enter your matricule and we'll send a password reset link to your registered email.
                       </p>
                       <div className="space-y-3">
                         <Label className="text-[10px] uppercase font-black text-muted-foreground tracking-[0.2em] ml-1 flex items-center gap-2">
-                          <Mail className="w-3.5 h-3.5 text-primary/40" /> {t("verifiedCorporateEmail")}
+                          <Fingerprint className="w-3.5 h-3.5 text-primary/40" /> {t("matricule")}
                         </Label>
                         <Input
                           required
-                          autoComplete="email"
-                          type="email"
+                          autoComplete="username"
+                          type="text"
                           disabled={isProcessing}
                           className="h-14 bg-accent/30 border-none rounded-2xl focus-visible:ring-primary font-bold text-center text-lg shadow-inner transition-all focus:bg-white px-6"
-                          value={authData.email}
-                          onChange={(e) => setAuthData({ ...authData, email: e.target.value })}
+                          placeholder="e.g. STU001"
+                          value={authData.matricule}
+                          onChange={(e) => setAuthData({ ...authData, matricule: e.target.value })}
                         />
                       </div>
                     </div>

@@ -37,6 +37,7 @@ export const API = {
   },
   PLATFORM: {
     SETTINGS: '/platform/settings/',
+    UPLOAD_LOGO: '/platform/upload-logo/',
     FEES: '/platform/fees/',
     EVENTS: '/platform/events/',
     TUTORIALS: '/platform/tutorials/',
