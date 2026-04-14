@@ -40,6 +40,22 @@ const normalizeList = (payload: any) => {
   return [];
 };
 
+const parseDRFError = (err: any): string => {
+  if (!err?.response) return err?.message || "Network error — is the backend running?";
+  const s = err.response.status;
+  const d = err.response.data;
+  if (!d) return `HTTP ${s}`;
+  if (typeof d === "string") return `${s}: ${d}`;
+  if (d.detail) return `${s}: ${d.detail}`;
+  if (typeof d === "object") {
+    const parts = Object.entries(d)
+      .map(([k, v]) => `${k}: ${Array.isArray(v) ? (v as string[]).join(", ") : String(v)}`)
+      .join(" | ");
+    return `${s}: ${parts}`;
+  }
+  return `HTTP ${s}`;
+};
+
 // Derive a display name + avatar from a conversation object.
 // ConversationListSerializer returns participants as {id, name, avatar}
 // ConversationDetailSerializer returns participants as {user_id, user_name, user_avatar, ...}
@@ -72,7 +88,10 @@ export default function ChatPage() {
   const [isLoadingConvs, setIsLoadingConvs] = useState(true);
   const [isLoadingMsgs, setIsLoadingMsgs] = useState(false);
   const [convsError, setConvsError] = useState(false);
+  const [convsErrorMsg, setConvsErrorMsg] = useState<string | null>(null);
   const [msgsError, setMsgsError] = useState(false);
+  const [msgsErrorMsg, setMsgsErrorMsg] = useState<string | null>(null);
+  const [wsError, setWsError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -99,11 +118,14 @@ export default function ChatPage() {
   const loadConversations = useCallback(async () => {
     setIsLoadingConvs(true);
     setConvsError(false);
+    setConvsErrorMsg(null);
     try {
       const result = await chatService.getConversations();
       setConversations(normalizeList(result));
-    } catch {
+    } catch (err: any) {
       setConvsError(true);
+      setConvsErrorMsg(parseDRFError(err));
+      console.error("[Chat] Failed to load conversations:", err?.response ?? err);
     } finally {
       setIsLoadingConvs(false);
     }
@@ -115,14 +137,17 @@ export default function ChatPage() {
   const loadMessages = useCallback(async (convId: string) => {
     setIsLoadingMsgs(true);
     setMsgsError(false);
+    setMsgsErrorMsg(null);
     try {
       const result = await chatService.getMessages(convId);
       const list = normalizeList(result);
       // Messages come newest-first from cursor pagination; reverse for display
       setMessages([...list].reverse());
       scrollToBottom();
-    } catch {
+    } catch (err: any) {
       setMsgsError(true);
+      setMsgsErrorMsg(parseDRFError(err));
+      console.error("[Chat] Failed to load messages:", err?.response ?? err);
     } finally {
       setIsLoadingMsgs(false);
     }
@@ -137,14 +162,39 @@ export default function ChatPage() {
   useEffect(() => {
     if (!selectedConv) return;
     wsRef.current?.close();
+    setWsError(null);
 
-    const wsUrl = `${process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000"}/ws/chat/${selectedConv.id}/`;
-    const ws = new WebSocket(wsUrl);
+    const token = (typeof window !== "undefined"
+      ? localStorage.getItem("eduignite_access_token") || localStorage.getItem("access_token")
+      : null) || "";
+
+    if (!token) {
+      setWsError("No auth token found — please log out and log in again.");
+      return;
+    }
+
+    const wsBase = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
+    const wsUrl = `${wsBase}/ws/chat/${selectedConv.id}/?token=${token}`;
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(wsUrl);
+    } catch (err: any) {
+      setWsError(`WebSocket construction failed: ${err?.message}`);
+      return;
+    }
     wsRef.current = ws;
 
-    ws.onopen = () => setWsConnected(true);
-    ws.onclose = () => setWsConnected(false);
-    ws.onerror = () => setWsConnected(false);
+    ws.onopen = () => { setWsConnected(true); setWsError(null); };
+    ws.onclose = (event) => {
+      setWsConnected(false);
+      if (event.code === 4001) setWsError("WebSocket auth failed (4001) — token invalid or expired.");
+      else if (event.code === 4002) setWsError("WebSocket rejected (4002) — not a participant in this conversation.");
+      else if (event.code !== 1000) setWsError(`WebSocket closed (code ${event.code}): ${event.reason || "no reason"}`);
+    };
+    ws.onerror = () => {
+      setWsConnected(false);
+      setWsError("WebSocket connection error — check that NEXT_PUBLIC_WS_URL is set correctly and the backend is running.");
+    };
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
@@ -152,7 +202,9 @@ export default function ChatPage() {
           setMessages((prev) => [...prev, data.message ?? data]);
           scrollToBottom();
         }
-      } catch {}
+      } catch (parseErr) {
+        console.error("[Chat WS] Failed to parse message:", event.data);
+      }
     };
 
     return () => { ws.close(); wsRef.current = null; };
@@ -183,9 +235,10 @@ export default function ChatPage() {
         conversation_id: String(selectedConv.id),
       } as any);
       setMessages((prev) => prev.map((m) => (m.id === tempMsg.id ? sent : m)));
-    } catch {
+    } catch (err: any) {
       setMessages((prev) => prev.filter((m) => m.id !== tempMsg.id));
-      toast({ variant: "destructive", title: "Error", description: "Failed to send message." });
+      toast({ variant: "destructive", title: "Send failed", description: parseDRFError(err) });
+      console.error("[Chat] Send message error:", err?.response ?? err);
       setMessageText(text); // restore
     } finally {
       setIsSending(false);
@@ -220,8 +273,9 @@ export default function ChatPage() {
       await loadConversations();
       setSelectedConv(conv);
       setNewChatOpen(false);
-    } catch {
-      toast({ variant: "destructive", title: "Error", description: "Could not start conversation." });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Could not start conversation", description: parseDRFError(err) });
+      console.error("[Chat] Start conversation error:", err?.response ?? err);
     } finally {
       setIsStartingChat(null);
     }
@@ -352,7 +406,10 @@ export default function ChatPage() {
             {convsError && !isLoadingConvs && (
               <div className="p-4 text-center space-y-3">
                 <AlertCircle className="w-6 h-6 text-destructive mx-auto" />
-                <p className="text-xs text-muted-foreground">Failed to load conversations</p>
+                <p className="text-xs font-bold text-destructive">Failed to load conversations</p>
+                {convsErrorMsg && (
+                  <p className="text-[10px] text-muted-foreground bg-destructive/5 rounded-lg p-2 text-left font-mono break-all">{convsErrorMsg}</p>
+                )}
                 <Button size="sm" variant="outline" onClick={loadConversations} className="gap-2">
                   <RefreshCw className="w-3 h-3" /> Retry
                 </Button>
@@ -446,12 +503,21 @@ export default function ChatPage() {
                   </div>
                 )}
                 {msgsError && !isLoadingMsgs && (
-                  <div className="flex flex-col items-center py-8 gap-3">
+                  <div className="flex flex-col items-center py-8 gap-3 px-4">
                     <AlertCircle className="w-8 h-8 text-destructive/30" />
-                    <p className="text-xs text-muted-foreground">Failed to load messages</p>
+                    <p className="text-xs font-bold text-destructive">Failed to load messages</p>
+                    {msgsErrorMsg && (
+                      <p className="text-[10px] text-muted-foreground bg-destructive/5 rounded-lg p-2 w-full font-mono break-all">{msgsErrorMsg}</p>
+                    )}
                     <Button size="sm" variant="outline" onClick={() => loadMessages(String(selectedConv.id))} className="gap-2">
                       <RefreshCw className="w-3 h-3" /> Retry
                     </Button>
+                  </div>
+                )}
+                {wsError && (
+                  <div className="mx-auto max-w-sm bg-amber-50 border border-amber-200 rounded-xl p-3 text-center space-y-1">
+                    <p className="text-[10px] font-black uppercase text-amber-700">WebSocket Error</p>
+                    <p className="text-[10px] text-amber-600 font-mono break-all">{wsError}</p>
                   </div>
                 )}
                 <div className="space-y-4">

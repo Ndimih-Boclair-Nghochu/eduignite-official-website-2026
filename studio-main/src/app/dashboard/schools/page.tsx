@@ -74,14 +74,37 @@ const normalizeSchoolList = (payload: any) => {
   return [];
 };
 
+const parseDRFError = (err: any): string => {
+  if (!err?.response) return err?.message || "Network error — is the backend running?";
+  const s = err.response.status;
+  const d = err.response.data;
+  if (!d) return `HTTP ${s}`;
+  if (typeof d === "string") return `${s}: ${d}`;
+  if (d.detail) return `${s}: ${d.detail}`;
+  if (d.non_field_errors) return `${s}: ${d.non_field_errors}`;
+  if (typeof d === "object") {
+    const parts = Object.entries(d)
+      .map(([k, v]) => `${k}: ${Array.isArray(v) ? (v as string[]).join(", ") : String(v)}`)
+      .join(" | ");
+    return `${s}: ${parts}`;
+  }
+  return `HTTP ${s}`;
+};
+
 // API Hooks
 const useSchools = () => {
   return useQuery({
     queryKey: ["schools"],
     queryFn: async () => {
-      return normalizeSchoolList(await schoolsService.getSchools());
+      try {
+        const result = await schoolsService.getSchools();
+        return normalizeSchoolList(result);
+      } catch (err: any) {
+        console.error("[Schools] GET /schools/schools/ failed:", err?.response?.status, err?.response?.data ?? err?.message);
+        throw err;
+      }
     },
-    retry: 2,
+    retry: 1,
   });
 };
 
@@ -133,7 +156,7 @@ export default function SchoolsManagementPage() {
   const { user, schools: authSchools } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: fetchedSchools, isLoading: schoolsLoading, isError: schoolsError } = useSchools();
+  const { data: fetchedSchools, isLoading: schoolsLoading, isError: schoolsError, error: schoolsQueryError } = useSchools();
   // Fall back to auth-context schools if the query hasn't resolved yet
   const schools = fetchedSchools ?? authSchools ?? [];
   const { data: schoolStats = {} } = useSchoolStats();
@@ -251,10 +274,11 @@ export default function SchoolsManagementPage() {
       toast({ title: "Node Provisioned", description: "Institution successfully onboarded to the network." });
     } catch (error: any) {
       setIsProcessing(false);
+      console.error("[Schools] Create school error:", error?.response ?? error);
       toast({
         variant: "destructive",
-        title: "Error",
-        description: error?.response?.data?.detail || "Failed to create school",
+        title: "Failed to create school",
+        description: parseDRFError(error),
       });
     }
   };
@@ -444,9 +468,17 @@ export default function SchoolsManagementPage() {
       )}
 
       {schoolsError && !schools.length && (
-        <div className="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">
+        <div className="flex flex-col items-center justify-center py-20 gap-4 text-muted-foreground">
           <Building2 className="w-10 h-10 text-primary/20" />
-          <p className="font-bold text-sm">Could not load schools. Please refresh.</p>
+          <p className="font-bold text-sm text-destructive">Could not load schools.</p>
+          {schoolsQueryError && (
+            <div className="max-w-lg w-full bg-destructive/5 border border-destructive/20 rounded-xl p-3 text-center">
+              <p className="text-[11px] font-mono text-destructive break-all">
+                {parseDRFError(schoolsQueryError)}
+              </p>
+            </div>
+          )}
+          <p className="text-xs">Check the browser Console for details, then refresh.</p>
         </div>
       )}
 
