@@ -70,8 +70,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
         if search:
             queryset = queryset.filter(
                 Q(name__icontains=search) |
-                Q(participants__first_name__icontains=search) |
-                Q(participants__last_name__icontains=search)
+                Q(participants__name__icontains=search)
             ).distinct()
 
         page = self.paginate_queryset(queryset)

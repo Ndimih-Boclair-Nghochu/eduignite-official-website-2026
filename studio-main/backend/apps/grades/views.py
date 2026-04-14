@@ -192,7 +192,7 @@ class GradeViewSet(viewsets.ModelViewSet):
         students = Student.objects.filter(
             school=request.user.school,
             student_class=class_name
-        ).order_by('user__first_name', 'user__last_name')
+        ).order_by('user__name')
 
         results = []
         for student in students:

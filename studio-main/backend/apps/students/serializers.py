@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+import uuid as _uuid
 from .models import Student, ParentStudentLink
 from apps.users.serializers import UserListSerializer as UserBasicSerializer
 
@@ -82,19 +83,25 @@ class StudentCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("A student with this admission number already exists.")
         return value
 
+    def _generate_matricule(self):
+        while True:
+            matricule = f'STU{_uuid.uuid4().hex[:8].upper()}'
+            if not User.objects.filter(matricule=matricule).exists():
+                return matricule
+
     def create(self, validated_data):
         email = validated_data.pop('email')
         first_name = validated_data.pop('first_name')
         last_name = validated_data.pop('last_name')
         password = validated_data.pop('password')
 
-        # Create user
+        # Create user — User model uses a single `name` field
         user = User.objects.create_user(
+            matricule=self._generate_matricule(),
+            name=f"{first_name} {last_name}",
             email=email,
-            first_name=first_name,
-            last_name=last_name,
+            role='STUDENT',
             password=password,
-            role='STUDENT'
         )
 
         # Create student profile
