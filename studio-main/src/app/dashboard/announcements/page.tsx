@@ -36,13 +36,13 @@ export default function AnnouncementsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const isPlatformExecutive = ["CEO", "CTO", "COO", "INV", "DESIGNER", "SUPER_ADMIN"].includes(user?.role || "");
-  const isFounderOwner = ["SUPER_ADMIN", "CEO", "CTO"].includes(user?.role || "");
+  // Only CEO and CTO can send platform-level announcements
+  const isFounderOwner = ["CEO", "CTO"].includes(user?.role || "");
   const isSchoolAdmin = ["SCHOOL_ADMIN", "SUB_ADMIN"].includes(user?.role || "");
   const isTeacher = user?.role === "TEACHER";
-  const canPost = isPlatformExecutive || isSchoolAdmin || isTeacher;
+  const canPost = isFounderOwner || isSchoolAdmin || isTeacher;
 
-  const initialTarget = isFounderOwner ? "ALL" : isPlatformExecutive ? "SCHOOL_ALL" : "ALL";
+  const initialTarget = isFounderOwner ? "EXECUTIVE_BOARD" : "SCHOOL_ALL";
   const [formData, setFormData] = useState({ title: "", content: "", target: initialTarget });
 
   // Fetch announcements
@@ -108,6 +108,9 @@ export default function AnnouncementsPage() {
   const getTargetLabel = (target: string) => {
     const labels: Record<string, string> = {
       ALL: "All Users",
+      EXECUTIVE_BOARD: "Executive Board",
+      STAFF: "Platform Staff",
+      PARTNER: "Partners",
       SCHOOL_ALL: "All School Members",
       STUDENT: "Students",
       TEACHER: "Teachers",
@@ -235,13 +238,12 @@ export default function AnnouncementsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl">
-                    {isPlatformExecutive ? (
+                    {isFounderOwner ? (
                       <SelectGroup>
                         <SelectLabel className="text-[10px] font-black uppercase opacity-40 px-3 py-2">Board Channels</SelectLabel>
-                        <SelectItem value="ALL" className="font-bold">All Users (Platform-wide)</SelectItem>
-                        <SelectItem value="SCHOOL_ALL">All School Members</SelectItem>
-                        <SelectItem value="TEACHER">Teachers</SelectItem>
-                        <SelectItem value="STUDENT">Students</SelectItem>
+                        <SelectItem value="EXECUTIVE_BOARD" className="font-bold">Executive Board</SelectItem>
+                        <SelectItem value="STAFF">Platform Staff</SelectItem>
+                        <SelectItem value="PARTNER">Partners &amp; Investors</SelectItem>
                       </SelectGroup>
                     ) : isSchoolAdmin ? (
                       <SelectGroup>
@@ -313,7 +315,7 @@ export default function AnnouncementsPage() {
                 {unreadCount} Unread
               </Badge>
             )}
-            {isPlatformExecutive && (
+            {isFounderOwner && (
               <Badge variant="outline" className="h-8 px-4 rounded-xl border-primary/10 text-primary font-black uppercase tracking-widest flex items-center gap-2">
                 <Zap className="w-3.5 h-3.5 text-secondary" /> Board Feed
               </Badge>

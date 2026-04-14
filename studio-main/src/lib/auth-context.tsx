@@ -515,7 +515,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const requests: Promise<any>[] = [];
 
-        if (userData.role === "SUPER_ADMIN" || userData.role === "CEO" || userData.role === "CTO" || userData.role === "COO") {
+        if (["SUPER_ADMIN", "CEO", "CTO", "COO", "INV", "DESIGNER"].includes(userData.role)) {
           requests.push(
             schoolsService.getSchools().then((response) => {
               setSchools((response?.results ?? []).map(mapSchoolInfo).filter(Boolean) as SchoolInfo[]);

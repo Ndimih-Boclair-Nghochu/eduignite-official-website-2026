@@ -13,6 +13,7 @@ export const API = {
   USERS: {
     BASE: '/users/',
     ME: '/users/me/',
+    UPLOAD_AVATAR: '/users/upload_avatar/',
     STATS: '/users/stats/',
     EXECUTIVES: '/users/executives/',
     FOUNDERS: '/users/founders/',
