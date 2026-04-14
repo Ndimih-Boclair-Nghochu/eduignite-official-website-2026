@@ -5,8 +5,8 @@ from .models import Conversation, ConversationParticipant, Message
 
 
 class ParticipantSerializer(serializers.ModelSerializer):
-    user_id = serializers.IntegerField(source='user.id', read_only=True)
-    user_name = serializers.CharField(source='user.get_full_name', read_only=True)
+    user_id = serializers.CharField(source='user.id', read_only=True)
+    user_name = serializers.CharField(source='user.name', read_only=True)
     user_avatar = serializers.SerializerMethodField()
     user_email = serializers.EmailField(source='user.email', read_only=True)
 
@@ -21,8 +21,8 @@ class ParticipantSerializer(serializers.ModelSerializer):
 
 
 class MessageSerializer(serializers.ModelSerializer):
-    sender_id = serializers.IntegerField(source='sender.id', read_only=True)
-    sender_name = serializers.CharField(source='sender.get_full_name', read_only=True)
+    sender_id = serializers.CharField(source='sender.id', read_only=True)
+    sender_name = serializers.CharField(source='sender.name', read_only=True)
     sender_avatar = serializers.SerializerMethodField()
     reply_to_text = serializers.SerializerMethodField()
 
@@ -61,7 +61,7 @@ class ConversationListSerializer(serializers.ModelSerializer):
     participants = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
     participant_count = serializers.IntegerField(source='participants.count', read_only=True)
-    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.name', read_only=True)
 
     class Meta:
         model = Conversation
@@ -98,7 +98,7 @@ class ConversationDetailSerializer(serializers.ModelSerializer):
         read_only=True
     )
     recent_messages = serializers.SerializerMethodField()
-    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.name', read_only=True)
 
     class Meta:
         model = Conversation
@@ -117,7 +117,7 @@ class ConversationDetailSerializer(serializers.ModelSerializer):
 
 class ConversationCreateSerializer(serializers.ModelSerializer):
     participant_ids = serializers.ListField(
-        child=serializers.IntegerField(),
+        child=serializers.CharField(),
         write_only=True,
         required=True
     )

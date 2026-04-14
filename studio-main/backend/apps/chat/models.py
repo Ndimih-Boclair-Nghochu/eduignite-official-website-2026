@@ -51,7 +51,7 @@ class Conversation(TimeStampedModel):
         if self.name:
             return self.name
         participant_names = ', '.join(
-            self.participants.values_list('first_name', flat=True)[:3]
+            self.participants.values_list('name', flat=True)[:3]
         )
         return f"Conversation with {participant_names}"
 

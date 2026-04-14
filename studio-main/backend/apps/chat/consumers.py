@@ -119,16 +119,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 {
                     'type': 'chat_message',
                     'message': {
-                        'id': message.id,
-                        'sender_id': message.sender.id,
-                        'sender_name': message.sender.get_full_name(),
-                        'sender_avatar': message.sender.avatar.url if message.sender.avatar else None,
+                        'id': str(message.id),
+                        'sender_id': str(message.sender.id),
+                        'sender_name': message.sender.name,
+                        'sender_avatar': message.sender.avatar or None,
                         'text': message.text,
                         'message_type': message.message_type,
                         'is_official': message.is_official,
                         'created_at': message.created_at.isoformat(),
-                        'reply_to': message.reply_to_id,
-                        'conversation_id': int(self.conversation_id)
+                        'reply_to': str(message.reply_to_id) if message.reply_to_id else None,
+                        'conversation_id': str(self.conversation_id),
                     }
                 }
             )

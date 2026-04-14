@@ -40,15 +40,21 @@ const normalizeList = (payload: any) => {
   return [];
 };
 
-// Derive a display name + avatar from a conversation object
+// Derive a display name + avatar from a conversation object.
+// ConversationListSerializer returns participants as {id, name, avatar}
+// ConversationDetailSerializer returns participants as {user_id, user_name, user_avatar, ...}
+const getParticipantId = (p: any) => p.user_id ?? p.id;
+const getParticipantName = (p: any) => p.user_name ?? p.name;
+const getParticipantAvatar = (p: any) => p.user_avatar ?? p.avatar ?? null;
+
 const getConversationDisplay = (conv: any, currentUserId: any) => {
   if (conv.conversation_type === "direct") {
     const other = (conv.participants || []).find(
-      (p: any) => String(p.id) !== String(currentUserId)
+      (p: any) => String(getParticipantId(p)) !== String(currentUserId)
     ) ?? conv.participants?.[0];
     return {
-      name: other?.name || conv.name || "Unknown",
-      avatar: other?.avatar || null,
+      name: other ? getParticipantName(other) : (conv.name || "Unknown"),
+      avatar: other ? getParticipantAvatar(other) : null,
     };
   }
   return { name: conv.name || "Group Chat", avatar: null };
