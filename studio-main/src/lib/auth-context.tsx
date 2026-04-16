@@ -601,8 +601,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateUser = async (updates: Partial<User>) => {
     if (!userData) return;
     try {
-      await usersService.updateProfile(updates);
-      const newUser = { ...userData, ...updates };
+      const savedUser = await usersService.updateProfile(updates);
+      const newUser: User = {
+        ...userData,
+        id: savedUser.id || userData.id,
+        uid: savedUser.uid || userData.uid,
+        name: savedUser.name || userData.name,
+        email: savedUser.email || userData.email,
+        phone: savedUser.phone,
+        whatsapp: savedUser.whatsapp,
+        role: (savedUser.role as UserRole) || userData.role,
+        schoolId: (savedUser as any).schoolId || userData.schoolId,
+        avatar: savedUser.avatar,
+        school: mapSchoolInfo((savedUser as any).school) ?? userData.school,
+        isLicensePaid: (savedUser as any).isLicensePaid ?? userData.isLicensePaid,
+        aiRequestCount: (savedUser as any).aiRequestCount ?? userData.aiRequestCount,
+        annualAvg: (savedUser as any).annualAvg ?? userData.annualAvg,
+      };
       setUserData(newUser);
     } catch (error) {
       console.error("Failed to update user", error);
@@ -612,9 +627,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateSchool = async (updates: Partial<SchoolInfo>) => {
     if (!userData || !userData.school) return;
-    const updated = { ...userData.school, ...updates };
-    setSchools((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
-    await updateUser({ school: updated });
+    try {
+      const savedSchool = await schoolsService.updateSchool(userData.school.id, {
+        name: updates.name,
+        short_name: updates.shortName,
+        principal: updates.principal,
+        motto: updates.motto,
+        logo: updates.logo,
+        banner: updates.banner,
+        description: updates.description,
+        location: updates.location,
+        region: updates.region,
+        division: updates.division,
+        sub_division: updates.subDivision,
+        city_village: updates.cityVillage,
+        address: updates.address,
+        postal_code: updates.postalCode,
+        phone: updates.phone,
+        email: updates.email,
+        status: updates.status,
+      } as any);
+
+      const mappedSchool = mapSchoolInfo(savedSchool);
+      if (!mappedSchool) return;
+
+      setSchools((prev) =>
+        prev.some((school) => school.id === mappedSchool.id)
+          ? prev.map((school) => (school.id === mappedSchool.id ? mappedSchool : school))
+          : [mappedSchool, ...prev]
+      );
+
+      setUserData((prev) => (prev ? { ...prev, school: mappedSchool } : prev));
+    } catch (error) {
+      console.error("Failed to update school", error);
+      throw error;
+    }
   };
 
   const updatePlatformSettings = async (updates: Partial<PlatformSettings>) => {

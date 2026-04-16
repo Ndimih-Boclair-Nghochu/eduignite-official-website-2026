@@ -265,6 +265,42 @@ class SchoolUpdateSerializer(serializers.ModelSerializer):
             'founded_year',
         ]
 
+    def validate_email(self, value):
+        school = self.instance
+        principal_user_id = getattr(school.principal_user, 'id', None) if school else None
+        duplicate_user = User.objects.filter(email=value)
+        if principal_user_id:
+            duplicate_user = duplicate_user.exclude(id=principal_user_id)
+        if duplicate_user.exists():
+            raise serializers.ValidationError('This email is already used by another account.')
+        return value
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        school = super().update(instance, validated_data)
+        principal_user = school.principal_user
+
+        if principal_user:
+            updated_fields = []
+
+            if principal_user.name != school.principal:
+                principal_user.name = school.principal
+                updated_fields.append('name')
+
+            if principal_user.email != school.email:
+                principal_user.email = school.email
+                updated_fields.append('email')
+
+            if principal_user.school_id != school.id:
+                principal_user.school = school
+                updated_fields.append('school')
+
+            if updated_fields:
+                principal_user.save(update_fields=updated_fields)
+
+        SchoolSettings.objects.get_or_create(school=school)
+        return school
+
 
 @extend_schema_serializer(
     examples=[

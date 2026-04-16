@@ -125,7 +125,25 @@ class UserDetailSerializer(serializers.ModelSerializer):
             return {
                 'id': obj.school.id,
                 'name': obj.school.name,
+                'short_name': obj.school.short_name,
+                'principal': obj.school.principal,
+                'motto': obj.school.motto,
+                'logo': obj.school.logo,
+                'banner': obj.school.banner,
+                'description': obj.school.description,
                 'location': obj.school.location,
+                'region': obj.school.region,
+                'division': obj.school.division,
+                'sub_division': obj.school.sub_division,
+                'city_village': obj.school.city_village,
+                'address': obj.school.address,
+                'postal_code': obj.school.postal_code,
+                'phone': obj.school.phone,
+                'email': obj.school.email,
+                'status': obj.school.status,
+                'student_count': obj.school.student_count,
+                'teacher_count': obj.school.teacher_count,
+                'matricule': obj.school.matricule,
             }
         return None
 

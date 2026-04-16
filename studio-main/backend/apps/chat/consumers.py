@@ -42,7 +42,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             self.group_name,
             {
                 'type': 'user_status',
-                'user_id': self.user.id,
+                'user_id': str(self.user.id),
                 'user_name': self.user.get_full_name(),
                 'status': 'online',
                 'timestamp': timezone.now().isoformat()
@@ -59,7 +59,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     self.group_name,
                     {
                         'type': 'user_status',
-                        'user_id': self.user.id,
+                        'user_id': str(self.user.id),
                         'user_name': self.user.get_full_name(),
                         'status': 'offline',
                         'timestamp': timezone.now().isoformat()
@@ -153,7 +153,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             self.group_name,
             {
                 'type': 'typing_indicator',
-                'user_id': self.user.id,
+                'user_id': str(self.user.id),
                 'user_name': self.user.get_full_name(),
                 'is_typing': is_typing
             }
@@ -170,8 +170,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 self.group_name,
                 {
                     'type': 'message_read',
-                    'user_id': self.user.id,
-                    'message_ids': message_ids,
+                    'user_id': str(self.user.id),
+                    'message_ids': [str(message_id) for message_id in message_ids],
                     'read_at': timezone.now().isoformat()
                 }
             )

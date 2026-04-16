@@ -4,6 +4,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth, type SchoolInfo } from "@/lib/auth-context";
 import { useI18n } from "@/lib/i18n-context";
+import { schoolsService } from "@/lib/api/services/schools.service";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,8 @@ export default function SchoolSettingsPage() {
   const { toast } = useToast();
   
   const [loading, setLoading] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     shortName: "",
@@ -80,20 +83,43 @@ export default function SchoolSettingsPage() {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'banner') => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'banner') => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        toast({ variant: "destructive", title: "File too large", description: "Please select an image smaller than 2MB." });
-        return;
-      }
+    if (!file || !user?.school?.id) return;
 
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, [type]: reader.result as string }));
-        toast({ title: "Image Uploaded", description: `${type.charAt(0).toUpperCase() + type.slice(1)} preview updated.` });
-      };
-      reader.readAsDataURL(file);
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ variant: "destructive", title: "File too large", description: "Please select an image smaller than 5MB." });
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    setFormData((prev) => ({ ...prev, [type]: previewUrl }));
+
+    if (type === "logo") setIsUploadingLogo(true);
+    if (type === "banner") setIsUploadingBanner(true);
+
+    try {
+      const result =
+        type === "logo"
+          ? await schoolsService.uploadLogo(user.school.id, file)
+          : await schoolsService.uploadBanner(user.school.id, file);
+
+      const persistedUrl = (result as any)[`${type}_url`] || (result as any)[type] || previewUrl;
+      setFormData((prev) => ({ ...prev, [type]: persistedUrl }));
+      await updateSchool({ [type]: persistedUrl } as Partial<SchoolInfo>);
+      toast({ title: "Image Uploaded", description: `${type.charAt(0).toUpperCase() + type.slice(1)} has been saved.` });
+    } catch (error: any) {
+      setFormData((prev) => ({ ...prev, [type]: user.school?.[type] || "" }));
+      toast({
+        variant: "destructive",
+        title: "Upload Failed",
+        description: error?.response?.data?.detail || `Failed to upload ${type}.`,
+      });
+    } finally {
+      if (type === "logo") setIsUploadingLogo(false);
+      if (type === "banner") setIsUploadingBanner(false);
+      if (type === "logo" && logoInputRef.current) logoInputRef.current.value = "";
+      if (type === "banner" && bannerInputRef.current) bannerInputRef.current.value = "";
     }
   };
 
@@ -235,9 +261,10 @@ export default function SchoolSettingsPage() {
             <CardContent className="space-y-8 pt-6">
               <div className="space-y-4">
                 <Label className="text-[10px] font-black uppercase text-muted-foreground text-center block tracking-widest">Institutional Logo</Label>
-                <div className="group relative w-32 h-32 mx-auto bg-accent/20 rounded-[2rem] border-2 border-dashed border-accent flex items-center justify-center cursor-pointer overflow-hidden transition-all hover:border-primary shadow-inner" onClick={() => logoInputRef.current?.click()}>
+                <div className="group relative w-32 h-32 mx-auto bg-accent/20 rounded-[2rem] border-2 border-dashed border-accent flex items-center justify-center cursor-pointer overflow-hidden transition-all hover:border-primary shadow-inner" onClick={() => !isUploadingLogo && logoInputRef.current?.click()}>
                   <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'logo')} />
                   {formData.logo ? <img src={formData.logo} alt="Logo" className="w-full h-full object-contain p-2" /> : <Upload className="w-8 h-8 text-muted-foreground" />}
+                  {isUploadingLogo && <Loader2 className="absolute w-8 h-8 animate-spin text-primary" />}
                   <div className="absolute inset-0 bg-primary/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 backdrop-blur-sm">
                     <Upload className="w-5 h-5" />
                     <span className="text-[8px] font-black uppercase">Change Logo</span>
@@ -246,9 +273,10 @@ export default function SchoolSettingsPage() {
               </div>
               <div className="space-y-4">
                 <Label className="text-[10px] font-black uppercase text-muted-foreground text-center block tracking-widest">Welcome Portal Banner</Label>
-                <div className="group relative aspect-video bg-accent/20 rounded-2xl border-2 border-dashed border-accent flex items-center justify-center cursor-pointer overflow-hidden transition-all hover:border-primary shadow-inner" onClick={() => bannerInputRef.current?.click()}>
+                <div className="group relative aspect-video bg-accent/20 rounded-2xl border-2 border-dashed border-accent flex items-center justify-center cursor-pointer overflow-hidden transition-all hover:border-primary shadow-inner" onClick={() => !isUploadingBanner && bannerInputRef.current?.click()}>
                   <input type="file" ref={bannerInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'banner')} />
                   {formData.banner ? <img src={formData.banner} alt="Banner" className="w-full h-full object-cover" /> : <Upload className="w-10 h-10 text-muted-foreground" />}
+                  {isUploadingBanner && <Loader2 className="absolute w-8 h-8 animate-spin text-primary" />}
                   <div className="absolute inset-0 bg-primary/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 backdrop-blur-sm">
                     <Upload className="w-5 h-5" />
                     <span className="text-[8px] font-black uppercase">Change Banner</span>

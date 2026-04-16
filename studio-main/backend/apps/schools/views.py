@@ -3,8 +3,11 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Count
+from django.conf import settings as django_settings
 from drf_spectacular.utils import extend_schema
 import logging
+import os
+import uuid
 
 from .models import School, SchoolSettings
 from .serializers import (
@@ -114,6 +117,51 @@ class SchoolViewSet(viewsets.ModelViewSet):
         """Partially update school."""
         return super().partial_update(request, *args, **kwargs)
 
+    def _save_school_media(self, request, school, field_name, subdirectory):
+        file = request.FILES.get(field_name)
+        if not file:
+            return Response(
+                {'detail': f'No {field_name} file provided'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml']
+        if file.content_type not in allowed_types:
+            return Response(
+                {'detail': 'Invalid file type. Use JPEG, PNG, GIF, WebP or SVG.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if file.size > 5 * 1024 * 1024:
+            return Response(
+                {'detail': 'File too large. Maximum size is 5MB.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ext = os.path.splitext(file.name)[1].lower() or '.png'
+        filename = f'{subdirectory}_{school.id}_{uuid.uuid4().hex}{ext}'
+        school_media_dir = os.path.join(django_settings.MEDIA_ROOT, 'schools', school.id)
+        os.makedirs(school_media_dir, exist_ok=True)
+        filepath = os.path.join(school_media_dir, filename)
+
+        with open(filepath, 'wb+') as destination:
+            for chunk in file.chunks():
+                destination.write(chunk)
+
+        media_url = request.build_absolute_uri(
+            f'{django_settings.MEDIA_URL}schools/{school.id}/{filename}'
+        )
+        setattr(school, field_name, media_url)
+        school.save(update_fields=[field_name])
+
+        return Response(
+            {
+                f'{field_name}_url': media_url,
+                field_name: media_url,
+            },
+            status=status.HTTP_200_OK,
+        )
+
     @extend_schema(
         description='Delete school (Executive only)',
         tags=['Schools'],
@@ -121,6 +169,24 @@ class SchoolViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         """Delete school (executives only)."""
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsExecutiveOrSchoolAdmin], url_path='upload-logo')
+    @extend_schema(
+        description='Upload and persist a school logo image.',
+        tags=['Schools'],
+    )
+    def upload_logo(self, request, id=None):
+        school = self.get_object()
+        return self._save_school_media(request, school, 'logo', 'logo')
+
+    @action(detail=True, methods=['post'], permission_classes=[IsExecutiveOrSchoolAdmin], url_path='upload-banner')
+    @extend_schema(
+        description='Upload and persist a school banner image.',
+        tags=['Schools'],
+    )
+    def upload_banner(self, request, id=None):
+        school = self.get_object()
+        return self._save_school_media(request, school, 'banner', 'banner')
 
     @action(detail=True, methods=['post'], permission_classes=[IsExecutiveOrSchoolAdmin])
     @extend_schema(

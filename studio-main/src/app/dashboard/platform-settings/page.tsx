@@ -51,7 +51,7 @@ const FEE_ROLES = [
 const TRAINING_ROLES = ["STUDENT", "TEACHER", "PARENT", "SCHOOL_ADMIN", "SUB_ADMIN", "BURSAR", "LIBRARIAN"] as const;
 
 export default function PlatformSettingsPage() {
-  const { user } = useAuth();
+  const { user, updatePlatformSettings } = useAuth();
   const { t } = useI18n();
   const { toast } = useToast();
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -170,6 +170,7 @@ export default function PlatformSettingsPage() {
     try {
       const result = await platformService.uploadLogo(file);
       setFormData((prev) => ({ ...prev, platformLogo: result.logo_url }));
+      await updatePlatformSettings({ logo: result.logo_url });
       queryClient.invalidateQueries({ queryKey: ["platform", "settings"] });
       toast({ title: "Logo Uploaded", description: "Platform logo has been saved." });
     } catch (err: any) {
@@ -190,7 +191,14 @@ export default function PlatformSettingsPage() {
         maintenance_mode: formData.maintenanceMode,
       },
       {
-        onSuccess: () => {
+        onSuccess: async () => {
+          await updatePlatformSettings({
+            name: formData.platformName,
+            logo: formData.platformLogo,
+            paymentDeadline: formData.paymentDeadline,
+            honourRollThreshold: formData.honourRollThreshold,
+          });
+          queryClient.invalidateQueries({ queryKey: ["platform", "settings"] });
           toast({
             title: "Platform Policy Updated",
             description: "All branding, financial, and training parameters have been synchronized.",

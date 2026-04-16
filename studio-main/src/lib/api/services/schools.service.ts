@@ -36,6 +36,24 @@ export const schoolsService = {
     return data;
   },
 
+  async uploadLogo(id: string, file: File): Promise<{ logo_url: string; logo: string }> {
+    const formData = new FormData();
+    formData.append('logo', file);
+    const { data } = await apiClient.post(`/schools/schools/${id}/upload-logo/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  },
+
+  async uploadBanner(id: string, file: File): Promise<{ banner_url: string; banner: string }> {
+    const formData = new FormData();
+    formData.append('banner', file);
+    const { data } = await apiClient.post(`/schools/schools/${id}/upload-banner/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  },
+
   async deleteSchool(id: string): Promise<void> {
     await apiClient.delete(API.SCHOOLS.DETAIL(id));
   },
