@@ -136,6 +136,7 @@ class School(TimeStampedModel):
         max_length=50,
         unique=True,
         blank=True,
+        null=True,
         help_text='Auto-generated activation matricule based on school name.',
     )
 

@@ -13,11 +13,10 @@ class Migration(migrations.Migration):
             name='matricule',
             field=models.CharField(
                 blank=True,
+                null=True,
                 help_text='Auto-generated activation matricule based on school name.',
                 max_length=50,
                 unique=True,
-                default='',
             ),
-            preserve_default=False,
         ),
     ]
