@@ -92,12 +92,12 @@ class PlatformLogoUploadView(APIView):
             for chunk in file.chunks():
                 dest.write(chunk)
 
-        logo_url = request.build_absolute_uri(f'{django_settings.MEDIA_URL}platform/{filename}')
+        logo_path = f'{django_settings.MEDIA_URL}platform/{filename}'
         settings = PlatformSettings.load()
-        settings.logo = logo_url
+        settings.logo = logo_path
         settings.save(update_fields=['logo'])
 
-        return Response({'logo_url': logo_url}, status=200)
+        return Response({'logo_url': logo_path}, status=200)
 
 
 class PlatformFeesViewSet(viewsets.ModelViewSet):

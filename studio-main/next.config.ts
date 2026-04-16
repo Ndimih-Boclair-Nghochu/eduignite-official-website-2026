@@ -36,6 +36,12 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'eduignite-official-website-2026-production.up.railway.app',
+        port: '',
+        pathname: '/**',
+      },
     ],
   },
 };

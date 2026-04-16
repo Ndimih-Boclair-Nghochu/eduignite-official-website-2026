@@ -148,16 +148,14 @@ class SchoolViewSet(viewsets.ModelViewSet):
             for chunk in file.chunks():
                 destination.write(chunk)
 
-        media_url = request.build_absolute_uri(
-            f'{django_settings.MEDIA_URL}schools/{school.id}/{filename}'
-        )
-        setattr(school, field_name, media_url)
+        media_path = f'{django_settings.MEDIA_URL}schools/{school.id}/{filename}'
+        setattr(school, field_name, media_path)
         school.save(update_fields=[field_name])
 
         return Response(
             {
-                f'{field_name}_url': media_url,
-                field_name: media_url,
+                f'{field_name}_url': media_path,
+                field_name: media_path,
             },
             status=status.HTTP_200_OK,
         )

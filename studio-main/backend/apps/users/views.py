@@ -214,11 +214,11 @@ class UserViewSet(viewsets.ModelViewSet):
             for chunk in file.chunks():
                 destination.write(chunk)
 
-        avatar_url = request.build_absolute_uri(f'{django_settings.MEDIA_URL}avatars/{filename}')
-        request.user.avatar = avatar_url
+        avatar_path = f'{django_settings.MEDIA_URL}avatars/{filename}'
+        request.user.avatar = avatar_path
         request.user.save(update_fields=['avatar'])
 
-        return Response({'avatar_url': avatar_url}, status=status.HTTP_200_OK)
+        return Response({'avatar_url': avatar_path}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], permission_classes=[IsOwnerOrExecutive])
     @extend_schema(
