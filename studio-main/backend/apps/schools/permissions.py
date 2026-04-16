@@ -33,5 +33,6 @@ class IsExecutiveOrSchoolAdmin(BasePermission):
         if request.user.is_platform_executive:
             return True
         if request.user.is_school_admin:
-            return request.user.school.id == obj.id
+            user_school = getattr(request.user, 'school', None)
+            return bool(user_school and user_school.id == obj.id)
         return False

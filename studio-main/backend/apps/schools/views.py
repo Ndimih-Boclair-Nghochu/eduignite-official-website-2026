@@ -42,15 +42,16 @@ class SchoolViewSet(viewsets.ModelViewSet):
         """Filter queryset based on user role."""
         user = self.request.user
         queryset = School.objects.all()
+        user_school = getattr(user, 'school', None)
 
         if user.is_platform_executive:
             return queryset
 
-        if user.is_school_admin:
-            return queryset.filter(id=user.school.id)
+        if user.is_school_admin and user_school:
+            return queryset.filter(id=user_school.id)
 
-        if user.school:
-            return queryset.filter(id=user.school.id)
+        if user_school:
+            return queryset.filter(id=user_school.id)
 
         return School.objects.none()
 
@@ -138,7 +139,8 @@ class SchoolViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if request.user.is_school_admin and request.user.school.id != school.id:
+        user_school = getattr(request.user, 'school', None)
+        if request.user.is_school_admin and (not user_school or user_school.id != school.id):
             return Response(
                 {'detail': 'You can only modify your own school'},
                 status=status.HTTP_403_FORBIDDEN,
@@ -180,13 +182,14 @@ class SchoolViewSet(viewsets.ModelViewSet):
     )
     def my_school(self, request):
         """Return requesting user's school detail."""
-        if not request.user.school:
+        user_school = getattr(request.user, 'school', None)
+        if not user_school:
             return Response(
                 {'detail': 'User has no associated school'},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        serializer = SchoolDetailSerializer(request.user.school)
+        serializer = SchoolDetailSerializer(user_school)
         return Response(serializer.data)
 
 
@@ -203,12 +206,13 @@ class SchoolSettingsViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filter settings based on user role."""
         user = self.request.user
+        user_school = getattr(user, 'school', None)
         if user.is_platform_executive:
             return SchoolSettings.objects.all()
-        if user.is_school_admin:
-            return SchoolSettings.objects.filter(school=user.school)
-        if user.school:
-            return SchoolSettings.objects.filter(school=user.school)
+        if user.is_school_admin and user_school:
+            return SchoolSettings.objects.filter(school=user_school)
+        if user_school:
+            return SchoolSettings.objects.filter(school=user_school)
         return SchoolSettings.objects.none()
 
     def get_permissions(self):

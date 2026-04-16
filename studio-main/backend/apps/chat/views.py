@@ -37,16 +37,15 @@ class ConversationViewSet(viewsets.ModelViewSet):
         return Conversation.objects.filter(
             participants=user,
             is_active=True
+        ).select_related(
+            'created_by',
+            'school',
         ).prefetch_related(
             Prefetch(
                 'participant_records',
                 ConversationParticipant.objects.select_related('user')
             ),
             'participants',
-            Prefetch(
-                'messages',
-                Message.objects.filter(is_deleted=False).order_by('-created_at')[:20]
-            )
         ).order_by('-last_message_at', '-created_at').distinct()
 
     def get_serializer_class(self):
