@@ -1,5 +1,7 @@
 import { apiClient } from '../client';
 import { API } from '../endpoints';
+import { normalizeFounder, normalizeUser } from '../normalizers';
+import { resolveMediaUrl } from '@/lib/media';
 import {
   User,
   FounderProfile,
@@ -16,23 +18,26 @@ import {
 export const usersService = {
   async getUsers(params?: ListParams): Promise<PaginatedResponse<User>> {
     const { data } = await apiClient.get(API.USERS.BASE, { params });
-    return data;
+    return {
+      ...data,
+      results: (data?.results ?? []).map(normalizeUser),
+    };
   },
 
   async getUser(id: string): Promise<User> {
     const { data } = await apiClient.get(API.USERS.DETAIL(id));
-    return data;
+    return normalizeUser(data);
   },
 
   async getMe(): Promise<User> {
     const { data } = await apiClient.get(API.USERS.ME);
-    return data;
+    return normalizeUser(data);
   },
 
   async updateProfile(idOrData: string | UpdateUserRequest, data?: UpdateUserRequest): Promise<User> {
     const payload = typeof idOrData === 'string' ? data ?? {} : idOrData;
     const { data: response } = await apiClient.patch(API.USERS.ME, payload);
-    return response;
+    return normalizeUser(response);
   },
 
   async uploadAvatar(file: File): Promise<{ avatar_url: string }> {
@@ -41,20 +46,23 @@ export const usersService = {
     const { data } = await apiClient.post(API.USERS.UPLOAD_AVATAR, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
-    return data;
+    return {
+      ...data,
+      avatar_url: resolveMediaUrl(data?.avatar_url),
+    };
   },
 
   async updateRole(id: string, roleOrPayload: string | { role: string }): Promise<User> {
     const role = typeof roleOrPayload === 'string' ? roleOrPayload : roleOrPayload.role;
     const { data } = await apiClient.post(API.USERS.UPDATE_ROLE(id), { role });
-    return data;
+    return normalizeUser(data);
   },
 
   async toggleLicense(id: string, payload?: { is_license_paid?: boolean; isLicensePaid?: boolean }): Promise<User> {
     const { data } = await apiClient.post(API.USERS.TOGGLE_LICENSE(id), {
       is_license_paid: payload?.is_license_paid ?? payload?.isLicensePaid ?? true,
     });
-    return data;
+    return normalizeUser(data);
   },
 
   async getStats(): Promise<PlatformStats> {
@@ -73,52 +81,58 @@ export const usersService = {
         count: data.length,
         next: null,
         previous: null,
-        results: data,
+        results: data.map(normalizeUser),
       };
     }
-    return data;
+    return {
+      ...data,
+      results: (data?.results ?? []).map(normalizeUser),
+    };
   },
 
   async getUsersBySchool(schoolId: string, params?: ListParams): Promise<PaginatedResponse<User>> {
     const { data } = await apiClient.get(API.USERS.BY_SCHOOL(schoolId), { params });
-    return data;
+    return {
+      ...data,
+      results: (data?.results ?? []).map(normalizeUser),
+    };
   },
 
   async createUser(userData: CreateUserRequest): Promise<User> {
     const { data } = await apiClient.post(API.USERS.BASE, userData);
-    return data;
+    return normalizeUser(data);
   },
 
   async getFounders(): Promise<FounderProfile[]> {
     const { data } = await apiClient.get(API.USERS.FOUNDERS);
-    return data;
+    return (data ?? []).map(normalizeFounder);
   },
 
   async createFounder(payload: CreateFounderRequest): Promise<FounderProfile> {
     const { data } = await apiClient.post(API.USERS.FOUNDERS, payload);
-    return data;
+    return normalizeFounder(data);
   },
 
   async updateFounder(id: string, payload: UpdateFounderRequest): Promise<FounderProfile> {
     const { data } = await apiClient.patch(API.USERS.FOUNDER_DETAIL(id), payload);
-    return data;
+    return normalizeFounder(data);
   },
 
   async addFounderShares(id: string, payload: AddFounderSharesRequest): Promise<FounderProfile> {
     const { data } = await apiClient.post(API.USERS.ADD_FOUNDER_SHARES(id), payload);
-    return data;
+    return normalizeFounder(data);
   },
 
   async renewFounderShares(id: string): Promise<FounderProfile> {
     const { data } = await apiClient.post(API.USERS.RENEW_FOUNDER_SHARES(id));
-    return data;
+    return normalizeFounder(data);
   },
 
   async removeShareAdjustment(founderId: string, adjustmentId: string): Promise<FounderProfile> {
     const { data } = await apiClient.delete(
       API.USERS.REMOVE_SHARE_ADJUSTMENT(founderId, adjustmentId)
     );
-    return data;
+    return normalizeFounder(data);
   },
 
   async deleteFounder(id: string): Promise<void> {

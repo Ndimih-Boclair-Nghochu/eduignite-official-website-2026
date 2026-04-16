@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useAuth, type UserRole } from "@/lib/auth-context";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
+import { resolveMediaUrl } from "@/lib/media";
 import {
   LayoutDashboard,
   Users,
@@ -67,6 +68,8 @@ export function DashboardSidebar({ onClose }: SidebarProps) {
   const isDesigner = user?.role === "DESIGNER";
   const isBursar = user?.role === "BURSAR";
   const isSchoolAdmin = user?.role === "SCHOOL_ADMIN" || user?.role === "SUB_ADMIN";
+  const schoolLogo = resolveMediaUrl(user?.school?.logo);
+  const userAvatar = resolveMediaUrl(user?.avatar);
 
   const routes = [
     {
@@ -288,9 +291,9 @@ export function DashboardSidebar({ onClose }: SidebarProps) {
       <div className="p-4 sm:p-6 shrink-0">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 overflow-hidden">
-            {!isSuperAdmin && user?.school?.logo ? (
+            {!isSuperAdmin && schoolLogo ? (
               <div className="w-10 h-10 rounded-xl bg-white p-1.5 flex items-center justify-center shrink-0 shadow-lg">
-                <img src={user.school.logo} alt="School Logo" className="w-full h-full object-contain" />
+                <img src={schoolLogo} alt="School Logo" className="w-full h-full object-contain" />
               </div>
             ) : isSuperAdmin && (
               <div className="bg-secondary p-1.5 rounded-lg shrink-0">
@@ -348,7 +351,7 @@ export function DashboardSidebar({ onClose }: SidebarProps) {
       <div className="p-4 border-t border-white/10 mt-auto bg-primary shrink-0">
         <Link href="/dashboard/profile" onClick={() => onClose?.()} className="flex items-center gap-3 mb-4 px-2 hover:bg-white/5 py-2 rounded-lg transition-colors group min-w-0">
           <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden shrink-0 border-2 border-transparent group-hover:border-white/20">
-            <img src={user?.avatar} alt={user?.name} className="w-full h-full object-cover" />
+            <img src={userAvatar} alt={user?.name} className="w-full h-full object-cover" />
           </div>
           <div className="flex flex-col overflow-hidden">
             <span className="text-sm font-semibold truncate text-white">{user?.name}</span>

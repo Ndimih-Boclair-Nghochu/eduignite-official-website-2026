@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { User, Camera, Lock, Save, Loader2, Mail, Smartphone, MessageCircle } from "lucide-react";
 import { usersService } from "@/lib/api/services/users.service";
 import { authService } from "@/lib/api/services/auth.service";
+import { resolveMediaUrl } from "@/lib/media";
 
 export default function ProfilePage() {
   const { user: authUser, updateUser } = useAuth();
@@ -43,7 +44,7 @@ export default function ProfilePage() {
       setEmail((user as any).email || "");
       setPhone((user as any).phone || "");
       setWhatsapp((user as any).whatsapp || "");
-      setAvatarPreview((user as any).avatar || "");
+      setAvatarPreview(resolveMediaUrl((user as any).avatar) || "");
     }
   }, [user]);
 
@@ -104,13 +105,13 @@ export default function ProfilePage() {
     setIsUploadingAvatar(true);
     try {
       const result = await usersService.uploadAvatar(file);
-      setAvatarPreview(result.avatar_url);
+      setAvatarPreview(resolveMediaUrl(result.avatar_url));
       queryClient.invalidateQueries({ queryKey: ["profile-me"] });
       // Sync auth context
       await updateUser({ avatar: result.avatar_url } as any);
       toast({ title: "Photo Updated", description: "Your profile picture has been saved." });
     } catch (err: any) {
-      setAvatarPreview((user as any)?.avatar || "");
+      setAvatarPreview(resolveMediaUrl((user as any)?.avatar) || "");
       const msg = err?.response?.data?.detail || "Failed to upload photo.";
       toast({ variant: "destructive", title: "Upload Failed", description: msg });
     } finally {
@@ -150,7 +151,7 @@ export default function ProfilePage() {
           <CardContent className="flex flex-col items-center space-y-6">
             <div className="relative group">
               <Avatar className="h-40 w-40 border-4 border-white shadow-2xl ring-1 ring-primary/5">
-                <AvatarImage src={avatarPreview || (displayUser as any)?.avatar || ""} />
+                <AvatarImage src={resolveMediaUrl(avatarPreview || (displayUser as any)?.avatar) || ""} />
                 <AvatarFallback className="bg-primary/5 text-primary text-4xl font-black">
                   {((displayUser as any)?.name || "?").charAt(0)}
                 </AvatarFallback>

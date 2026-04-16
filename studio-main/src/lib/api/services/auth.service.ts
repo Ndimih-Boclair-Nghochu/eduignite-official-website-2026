@@ -1,5 +1,6 @@
 import { apiClient, clearTokens, setTokens } from "../client";
 import { API } from "../endpoints";
+import { normalizeUser } from "../normalizers";
 import type {
   ActivateAccountRequest,
   ChangePasswordRequest,
@@ -9,37 +10,6 @@ import type {
   TokenRefreshResponse,
   User,
 } from "../types";
-
-function normalizeUser(user: Record<string, any> | undefined): User {
-  const school = user?.school
-    ? {
-        ...user.school,
-        shortName: user.school.shortName ?? user.school.short_name,
-        subDivision: user.school.subDivision ?? user.school.sub_division,
-        cityVillage: user.school.cityVillage ?? user.school.city_village,
-        postalCode: user.school.postalCode ?? user.school.postal_code,
-      }
-    : undefined;
-
-  return {
-    ...(user ?? {}),
-    id: user?.id ?? "",
-    uid: user?.uid ?? "",
-    avatar: user?.avatar ?? "",
-    phone: user?.phone ?? "",
-    whatsapp: user?.whatsapp ?? "",
-    name: user?.name ?? "",
-    email: user?.email ?? "",
-    role: user?.role ?? "STUDENT",
-    school,
-    schoolId: user?.schoolId ?? user?.school_id ?? user?.school?.id ?? null,
-    isLicensePaid: user?.isLicensePaid ?? user?.is_license_paid ?? false,
-    aiRequestCount: user?.aiRequestCount ?? user?.ai_request_count ?? 0,
-    annualAvg: user?.annualAvg ?? user?.annual_avg,
-    isPlatformExecutive: user?.isPlatformExecutive ?? user?.is_platform_executive,
-    isSchoolAdmin: user?.isSchoolAdmin ?? user?.is_school_admin,
-  };
-}
 
 function normalizeLoginResponse(data: Record<string, any>): LoginResponse {
   const access = data.access ?? data.access_token ?? "";

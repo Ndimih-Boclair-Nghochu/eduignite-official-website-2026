@@ -1,5 +1,7 @@
 import { apiClient } from '../client';
 import { API } from '../endpoints';
+import { normalizeSchool } from '../normalizers';
+import { resolveMediaUrl } from '@/lib/media';
 import {
   School,
   SchoolSettings,
@@ -13,27 +15,30 @@ import {
 export const schoolsService = {
   async getSchools(params?: ListParams): Promise<PaginatedResponse<School>> {
     const { data } = await apiClient.get(API.SCHOOLS.BASE, { params });
-    return data;
+    return {
+      ...data,
+      results: (data?.results ?? []).map(normalizeSchool).filter(Boolean) as School[],
+    };
   },
 
   async getSchool(id: string): Promise<School> {
     const { data } = await apiClient.get(API.SCHOOLS.DETAIL(id));
-    return data;
+    return normalizeSchool(data) as School;
   },
 
   async getMySchool(): Promise<School> {
     const { data } = await apiClient.get(API.SCHOOLS.MY_SCHOOL);
-    return data;
+    return normalizeSchool(data) as School;
   },
 
   async createSchool(schoolData: CreateSchoolRequest): Promise<School> {
     const { data } = await apiClient.post(API.SCHOOLS.BASE, schoolData);
-    return data;
+    return normalizeSchool(data) as School;
   },
 
   async updateSchool(id: string, schoolData: UpdateSchoolRequest): Promise<School> {
     const { data } = await apiClient.patch(API.SCHOOLS.DETAIL(id), schoolData);
-    return data;
+    return normalizeSchool(data) as School;
   },
 
   async uploadLogo(id: string, file: File): Promise<{ logo_url: string; logo: string }> {
@@ -42,7 +47,11 @@ export const schoolsService = {
     const { data } = await apiClient.post(`/schools/schools/${id}/upload-logo/`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
-    return data;
+    return {
+      ...data,
+      logo_url: resolveMediaUrl(data?.logo_url),
+      logo: resolveMediaUrl(data?.logo),
+    };
   },
 
   async uploadBanner(id: string, file: File): Promise<{ banner_url: string; banner: string }> {
@@ -51,7 +60,11 @@ export const schoolsService = {
     const { data } = await apiClient.post(`/schools/schools/${id}/upload-banner/`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
-    return data;
+    return {
+      ...data,
+      banner_url: resolveMediaUrl(data?.banner_url),
+      banner: resolveMediaUrl(data?.banner),
+    };
   },
 
   async deleteSchool(id: string): Promise<void> {
@@ -60,7 +73,7 @@ export const schoolsService = {
 
   async toggleSchoolStatus(id: string, body?: Record<string, unknown>): Promise<School> {
     const { data } = await apiClient.post(API.SCHOOLS.TOGGLE_STATUS(id), body ?? {});
-    return data;
+    return normalizeSchool(data) as School;
   },
 
   async getSchoolStats(): Promise<PlatformStats> {

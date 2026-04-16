@@ -13,6 +13,8 @@ import { schoolsService } from "@/lib/api/services/schools.service";
 import { feedbackService } from "@/lib/api/services/feedback.service";
 import { announcementsService } from "@/lib/api/services/announcements.service";
 import { setTokens, clearTokens } from "@/lib/api/client";
+import { normalizePlatformSettings, normalizeUser } from "@/lib/api/normalizers";
+import { resolveMediaUrl } from "@/lib/media";
 
 export type UserRole = "SUPER_ADMIN" | "CEO" | "CTO" | "COO" | "INV" | "DESIGNER" | "SCHOOL_ADMIN" | "SUB_ADMIN" | "TEACHER" | "STUDENT" | "PARENT" | "BURSAR" | "LIBRARIAN";
 
@@ -276,8 +278,8 @@ const mapSchoolInfo = (school: any): SchoolInfo | undefined => {
     shortName: school.shortName ?? school.short_name ?? "",
     principal: school.principal ?? "",
     motto: school.motto ?? "",
-    logo: school.logo ?? "",
-    banner: school.banner ?? "",
+    logo: resolveMediaUrl(school.logo),
+    banner: resolveMediaUrl(school.banner),
     description: school.description ?? "",
     location: school.location ?? "",
     region: school.region ?? "",
@@ -294,7 +296,7 @@ const mapSchoolInfo = (school: any): SchoolInfo | undefined => {
 
 const mapPlatformSettingsRecord = (settings: any): PlatformSettings => ({
   name: settings?.name ?? PLATFORM_DEFAULTS.name,
-  logo: settings?.logo ?? "",
+  logo: resolveMediaUrl(settings?.logo),
   paymentDeadline: settings?.paymentDeadline ?? settings?.payment_deadline ?? "",
   fees: {
     ...DEFAULT_FEES,
@@ -311,7 +313,7 @@ const mapTestimonyRecord = (testimony: any): Testimony => ({
   id: testimony?.id ?? "",
   userId: testimony?.user ?? testimony?.userId ?? "",
   name: testimony?.name ?? testimony?.user_name ?? testimony?.author?.name ?? "Anonymous",
-  profileImage: testimony?.profileImage ?? testimony?.user_avatar ?? testimony?.author?.avatar ?? "",
+  profileImage: resolveMediaUrl(testimony?.profileImage ?? testimony?.user_avatar ?? testimony?.author?.avatar),
   role: testimony?.role ?? testimony?.role_display ?? testimony?.author?.role ?? "",
   schoolName: testimony?.schoolName ?? testimony?.school_name ?? "",
   message: testimony?.message ?? testimony?.content ?? "",
@@ -324,8 +326,8 @@ const mapCommunityBlogRecord = (blog: any): CommunityBlog => ({
   title: blog?.title ?? "",
   senderName: blog?.senderName ?? blog?.author_name ?? blog?.author?.name ?? "",
   senderRole: blog?.senderRole ?? blog?.author_role ?? blog?.author?.role ?? "",
-  senderAvatar: blog?.senderAvatar ?? blog?.author_avatar ?? blog?.author?.avatar ?? "",
-  image: blog?.image ?? undefined,
+  senderAvatar: resolveMediaUrl(blog?.senderAvatar ?? blog?.author_avatar ?? blog?.author?.avatar),
+  image: resolveMediaUrl(blog?.image) || undefined,
   paragraphs: Array.isArray(blog?.paragraphs) ? blog.paragraphs : [],
   createdAt: new Date(blog?.createdAt ?? blog?.created_at ?? Date.now()),
 });
@@ -336,10 +338,10 @@ const mapFeedbackRecord = (feedback: any): Feedback => ({
   message: feedback?.message ?? "",
   schoolName: feedback?.schoolName ?? feedback?.school?.name ?? "",
   schoolId: feedback?.schoolId ?? feedback?.school ?? "",
-  schoolLogo: feedback?.schoolLogo ?? feedback?.school?.logo ?? "",
+  schoolLogo: resolveMediaUrl(feedback?.schoolLogo ?? feedback?.school?.logo),
   senderName: feedback?.senderName ?? feedback?.sender?.name ?? "",
   senderRole: feedback?.senderRole ?? feedback?.sender?.role ?? "",
-  senderAvatar: feedback?.senderAvatar ?? feedback?.sender?.avatar ?? "",
+  senderAvatar: resolveMediaUrl(feedback?.senderAvatar ?? feedback?.sender?.avatar),
   status: feedback?.status ?? "New",
   createdAt: new Date(feedback?.createdAt ?? feedback?.created_at ?? Date.now()),
 });
@@ -366,7 +368,7 @@ const mapAnnouncementRecord = (announcement: any): Announcement => ({
   targetUid: announcement?.targetUid ?? announcement?.target_user,
   senderName: announcement?.senderName ?? announcement?.sender?.name ?? "",
   senderRole: announcement?.senderRole ?? announcement?.sender?.role ?? "",
-  senderAvatar: announcement?.senderAvatar ?? announcement?.sender?.avatar ?? "",
+  senderAvatar: resolveMediaUrl(announcement?.senderAvatar ?? announcement?.sender?.avatar),
   senderUid: announcement?.senderUid ?? announcement?.sender?.uid ?? "",
   createdAt: new Date(announcement?.createdAt ?? announcement?.created_at ?? Date.now()),
 });
@@ -376,7 +378,7 @@ const mapSupportRecord = (support: any): SupportContribution => ({
   uid: support?.uid ?? support?.user?.uid ?? "",
   userName: support?.userName ?? support?.user?.name ?? "",
   userRole: support?.userRole ?? support?.user?.role ?? "",
-  userAvatar: support?.userAvatar ?? support?.user?.avatar ?? "",
+  userAvatar: resolveMediaUrl(support?.userAvatar ?? support?.user?.avatar),
   schoolName: support?.schoolName ?? support?.school?.name ?? "",
   amount: Number(support?.amount ?? 0),
   method: support?.method ?? support?.payment_method ?? "",
@@ -391,7 +393,7 @@ const mapPublicEventRecord = (event: any): PublicEvent => ({
   type: event?.type ?? "image",
   title: event?.title ?? "",
   description: event?.description ?? "",
-  url: event?.url ?? "",
+  url: resolveMediaUrl(event?.url),
 });
 
 const mapStaffRemarkRecord = (remark: any): StaffRemark => ({
@@ -429,7 +431,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           communityService.getTestimonies(),
         ]);
 
-        setPlatformSettings(mapPlatformSettingsRecord(settings));
+        setPlatformSettings(mapPlatformSettingsRecord(normalizePlatformSettings(settings)));
         setPublicEvents((eventsResponse?.results ?? []).map(mapPublicEventRecord));
         setCommunityBlogs((blogsResponse?.results ?? []).map(mapCommunityBlogRecord));
         setTestimonials((testimoniesResponse?.results ?? []).map(mapTestimonyRecord));
@@ -447,7 +449,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.getItem("eduignite_access_token") || localStorage.getItem("access_token");
       if (accessToken) {
         try {
-          const user = await authService.getCurrentUser();
+          const user = normalizeUser(await authService.getCurrentUser());
           if (user) {
             const mappedUser: User = {
               id: user.id || "",
@@ -458,7 +460,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               whatsapp: user.whatsapp,
               role: (user.role as UserRole) || "STUDENT",
               schoolId: user.schoolId || null,
-              avatar: user.avatar,
+              avatar: resolveMediaUrl(user.avatar),
               school: mapSchoolInfo(user.school),
               isLicensePaid: user.isLicensePaid || false,
               aiRequestCount: user.aiRequestCount,
@@ -470,7 +472,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (error.response?.status === 401) {
             try {
               await authService.refreshToken();
-              const user = await authService.getCurrentUser();
+              const user = normalizeUser(await authService.getCurrentUser());
               if (user) {
                 const mappedUser: User = {
                   id: user.id || "",
@@ -481,8 +483,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   whatsapp: user.whatsapp,
                   role: (user.role as UserRole) || "STUDENT",
                   schoolId: user.schoolId || null,
-                  avatar: user.avatar,
-              school: mapSchoolInfo(user.school),
+                  avatar: resolveMediaUrl(user.avatar),
+                  school: mapSchoolInfo(user.school),
                   isLicensePaid: user.isLicensePaid || false,
                   aiRequestCount: user.aiRequestCount,
                   annualAvg: user.annualAvg,
@@ -562,7 +564,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setTokens(response.access, response.refresh);
       }
 
-      const user = await authService.getCurrentUser();
+      const user = normalizeUser(await authService.getCurrentUser());
       if (user) {
         const mappedUser: User = {
           id: user.id || "",
@@ -573,7 +575,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           whatsapp: user.whatsapp,
           role: (user.role as UserRole) || "STUDENT",
           schoolId: user.schoolId || null,
-          avatar: user.avatar,
+          avatar: resolveMediaUrl(user.avatar),
           school: mapSchoolInfo(user.school),
           isLicensePaid: user.isLicensePaid || false,
           aiRequestCount: user.aiRequestCount,
@@ -602,7 +604,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!userData) return;
     try {
       if (Object.keys(updates).length === 1 && typeof updates.avatar !== "undefined") {
-        setUserData((prev) => (prev ? { ...prev, avatar: updates.avatar } : prev));
+        setUserData((prev) => (prev ? { ...prev, avatar: resolveMediaUrl(updates.avatar) } : prev));
         return;
       }
 
@@ -617,7 +619,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         whatsapp: savedUser.whatsapp,
         role: (savedUser.role as UserRole) || userData.role,
         schoolId: (savedUser as any).schoolId || userData.schoolId,
-        avatar: savedUser.avatar,
+        avatar: resolveMediaUrl(savedUser.avatar),
         school: mapSchoolInfo((savedUser as any).school) ?? userData.school,
         isLicensePaid: (savedUser as any).isLicensePaid ?? userData.isLicensePaid,
         aiRequestCount: (savedUser as any).aiRequestCount ?? userData.aiRequestCount,

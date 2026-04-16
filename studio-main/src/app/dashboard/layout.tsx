@@ -42,6 +42,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { resolveMediaUrl } from "@/lib/media";
 
 const EXECUTIVE_ROLES: UserRole[] = ["SUPER_ADMIN", "CEO", "CTO", "COO", "INV", "DESIGNER"];
 
@@ -151,6 +152,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isPlatformExecutive = EXECUTIVE_ROLES.includes(user.role as UserRole);
   const isLicensePaid = user.isLicensePaid;
   const isSubscriptionPage = pathname === "/dashboard/subscription";
+  const schoolLogo = resolveMediaUrl(user?.school?.logo);
 
   if (!isLicensePaid && !isPlatformExecutive && !isSubscriptionPage) {
     return (
@@ -202,9 +204,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="flex-1 flex min-h-dvh flex-col overflow-hidden">
         <header className="md:hidden sticky top-0 z-20 flex items-center justify-between gap-3 px-3 py-3 bg-primary/95 backdrop-blur text-white shrink-0">
           <div className="flex items-center gap-2 overflow-hidden">
-            {!isPlatformExecutive && user?.school?.logo ? (
+            {!isPlatformExecutive && schoolLogo ? (
               <div className="w-6 h-6 rounded bg-white p-0.5 flex items-center justify-center shrink-0">
-                <img src={user.school.logo} alt="Logo" className="w-full h-full object-contain" />
+                <img src={schoolLogo} alt="Logo" className="w-full h-full object-contain" />
               </div>
             ) : isPlatformExecutive ? (
               <div className="bg-secondary p-1 rounded-lg shrink-0">
@@ -240,8 +242,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
                       <div className="p-1.5 bg-primary/5 rounded-lg border border-primary/10">
-                        {user?.school?.logo ? (
-                          <img src={user.school.logo} alt="School Logo" className="w-4 h-4 object-contain" />
+                        {schoolLogo ? (
+                          <img src={schoolLogo} alt="School Logo" className="w-4 h-4 object-contain" />
                         ) : (
                           <Building2 className="w-4 h-4 text-primary" />
                         )}

@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { resolveMediaUrl } from "@/lib/media";
 
 const FEE_ROLES = [
   { role: "STUDENT", label: "Student Access", icon: GraduationCap },
@@ -182,7 +183,7 @@ export default function PlatformSettingsPage() {
 
     try {
       const result = await platformService.uploadLogo(file);
-      setFormData((prev) => ({ ...prev, platformLogo: result.logo_url }));
+      setFormData((prev) => ({ ...prev, platformLogo: resolveMediaUrl(result.logo_url) }));
       await updatePlatformSettings({ logo: result.logo_url });
       queryClient.invalidateQueries({ queryKey: ["platform", "settings"] });
       toast({ title: "Logo Uploaded", description: "Platform logo has been saved." });
@@ -341,7 +342,7 @@ export default function PlatformSettingsPage() {
                       >
                         <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={handleLogoChange} />
                         {formData.platformLogo ? (
-                          <img src={formData.platformLogo} alt="Logo" className="w-full h-full object-contain p-6" />
+                          <img src={resolveMediaUrl(formData.platformLogo)} alt="Logo" className="w-full h-full object-contain p-6" />
                         ) : (
                           <Upload className="w-10 h-10 text-primary/20" />
                         )}

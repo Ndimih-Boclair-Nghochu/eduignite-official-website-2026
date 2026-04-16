@@ -1,5 +1,7 @@
 import { apiClient } from '../client';
 import { API } from '../endpoints';
+import { normalizePlatformSettings } from '../normalizers';
+import { resolveMediaUrl } from '@/lib/media';
 import {
   PlatformSettings,
   PublicEvent,
@@ -11,12 +13,12 @@ import {
 export const platformService = {
   async getPlatformSettings(): Promise<PlatformSettings> {
     const { data } = await apiClient.get(API.PLATFORM.SETTINGS);
-    return data;
+    return normalizePlatformSettings(data);
   },
 
   async updatePlatformSettings(settings: Partial<PlatformSettings>): Promise<PlatformSettings> {
     const { data } = await apiClient.patch(API.PLATFORM.SETTINGS, settings);
-    return data;
+    return normalizePlatformSettings(data);
   },
 
   async uploadLogo(file: File): Promise<{ logo_url: string }> {
@@ -25,7 +27,10 @@ export const platformService = {
     const { data } = await apiClient.post(API.PLATFORM.UPLOAD_LOGO, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
-    return data;
+    return {
+      ...data,
+      logo_url: resolveMediaUrl(data?.logo_url),
+    };
   },
 
   async getPlatformFees(params?: ListParams): Promise<PaginatedResponse<any>> {

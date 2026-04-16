@@ -31,6 +31,7 @@ import {
   Globe
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { resolveMediaUrl } from "@/lib/media";
 
 export default function SchoolSettingsPage() {
   const { user, updateSchool } = useAuth();
@@ -104,12 +105,12 @@ export default function SchoolSettingsPage() {
           ? await schoolsService.uploadLogo(user.school.id, file)
           : await schoolsService.uploadBanner(user.school.id, file);
 
-      const persistedUrl = (result as any)[`${type}_url`] || (result as any)[type] || previewUrl;
+      const persistedUrl = resolveMediaUrl((result as any)[`${type}_url`] || (result as any)[type] || previewUrl);
       setFormData((prev) => ({ ...prev, [type]: persistedUrl }));
       await updateSchool({ [type]: persistedUrl } as Partial<SchoolInfo>);
       toast({ title: "Image Uploaded", description: `${type.charAt(0).toUpperCase() + type.slice(1)} has been saved.` });
     } catch (error: any) {
-      setFormData((prev) => ({ ...prev, [type]: user.school?.[type] || "" }));
+      setFormData((prev) => ({ ...prev, [type]: resolveMediaUrl(user.school?.[type]) || "" }));
       toast({
         variant: "destructive",
         title: "Upload Failed",
@@ -263,7 +264,7 @@ export default function SchoolSettingsPage() {
                 <Label className="text-[10px] font-black uppercase text-muted-foreground text-center block tracking-widest">Institutional Logo</Label>
                 <div className="group relative w-32 h-32 mx-auto bg-accent/20 rounded-[2rem] border-2 border-dashed border-accent flex items-center justify-center cursor-pointer overflow-hidden transition-all hover:border-primary shadow-inner" onClick={() => !isUploadingLogo && logoInputRef.current?.click()}>
                   <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'logo')} />
-                  {formData.logo ? <img src={formData.logo} alt="Logo" className="w-full h-full object-contain p-2" /> : <Upload className="w-8 h-8 text-muted-foreground" />}
+                  {formData.logo ? <img src={resolveMediaUrl(formData.logo)} alt="Logo" className="w-full h-full object-contain p-2" /> : <Upload className="w-8 h-8 text-muted-foreground" />}
                   {isUploadingLogo && <Loader2 className="absolute w-8 h-8 animate-spin text-primary" />}
                   <div className="absolute inset-0 bg-primary/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 backdrop-blur-sm">
                     <Upload className="w-5 h-5" />
@@ -275,7 +276,7 @@ export default function SchoolSettingsPage() {
                 <Label className="text-[10px] font-black uppercase text-muted-foreground text-center block tracking-widest">Welcome Portal Banner</Label>
                 <div className="group relative aspect-video bg-accent/20 rounded-2xl border-2 border-dashed border-accent flex items-center justify-center cursor-pointer overflow-hidden transition-all hover:border-primary shadow-inner" onClick={() => !isUploadingBanner && bannerInputRef.current?.click()}>
                   <input type="file" ref={bannerInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'banner')} />
-                  {formData.banner ? <img src={formData.banner} alt="Banner" className="w-full h-full object-cover" /> : <Upload className="w-10 h-10 text-muted-foreground" />}
+                  {formData.banner ? <img src={resolveMediaUrl(formData.banner)} alt="Banner" className="w-full h-full object-cover" /> : <Upload className="w-10 h-10 text-muted-foreground" />}
                   {isUploadingBanner && <Loader2 className="absolute w-8 h-8 animate-spin text-primary" />}
                   <div className="absolute inset-0 bg-primary/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-1 backdrop-blur-sm">
                     <Upload className="w-5 h-5" />
