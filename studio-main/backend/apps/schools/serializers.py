@@ -34,7 +34,6 @@ class SchoolListSerializer(serializers.ModelSerializer):
             'student_count',
             'teacher_count',
             'logo',
-            'matricule',
         ]
 
 
@@ -89,7 +88,6 @@ class SchoolDetailSerializer(serializers.ModelSerializer):
             'name',
             'short_name',
             'principal',
-            'principal_user',
             'motto',
             'logo',
             'banner',
@@ -107,7 +105,6 @@ class SchoolDetailSerializer(serializers.ModelSerializer):
             'founded_year',
             'student_count',
             'teacher_count',
-            'matricule',
             'settings',
             'created_at',
             'updated_at',
@@ -160,7 +157,6 @@ class SchoolCreateSerializer(serializers.ModelSerializer):
             'name',
             'short_name',
             'principal',
-            'principal_user',
             'motto',
             'logo',
             'banner',
@@ -217,7 +213,6 @@ class SchoolUpdateSerializer(serializers.ModelSerializer):
             'name',
             'short_name',
             'principal',
-            'principal_user',
             'motto',
             'logo',
             'banner',

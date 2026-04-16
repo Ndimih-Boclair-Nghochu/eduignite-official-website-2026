@@ -41,7 +41,7 @@ class SchoolViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filter queryset based on user role."""
         user = self.request.user
-        queryset = School.objects.all()
+        queryset = School.objects.defer('matricule', 'principal_user')
         user_school = getattr(user, 'school', None)
 
         if user.is_platform_executive:
@@ -94,7 +94,7 @@ class SchoolViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         school = serializer.save()
         response_data = SchoolDetailSerializer(school).data
-        response_data['matricule'] = school.matricule
+        response_data['matricule'] = getattr(school, 'matricule', '')
         return Response(response_data, status=status.HTTP_201_CREATED)
 
     @extend_schema(

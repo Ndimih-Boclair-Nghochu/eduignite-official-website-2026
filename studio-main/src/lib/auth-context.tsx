@@ -517,9 +517,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (["SUPER_ADMIN", "CEO", "CTO", "COO", "INV", "DESIGNER"].includes(userData.role)) {
           requests.push(
-            schoolsService.getSchools().then((response) => {
-              setSchools((response?.results ?? []).map(mapSchoolInfo).filter(Boolean) as SchoolInfo[]);
-            })
+            schoolsService
+              .getSchools()
+              .then((response) => {
+                setSchools((response?.results ?? []).map(mapSchoolInfo).filter(Boolean) as SchoolInfo[]);
+              })
+              .catch((error) => {
+                console.error("Failed to load schools for authenticated context", error);
+              })
           );
         } else if (userData.school) {
           setSchools([userData.school]);
@@ -529,13 +534,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           (userData.role === "SCHOOL_ADMIN" || userData.role === "SUB_ADMIN" || userData.role === "SUPER_ADMIN" || userData.role === "CEO" || userData.role === "CTO" || userData.role === "COO"
             ? staffRemarksService.getRemarks()
             : staffRemarksService.getMyRemarks()
-          ).then((response) => {
-            const remarks = Array.isArray(response) ? response : response?.results ?? [];
-            setStaffRemarks(remarks.map(mapStaffRemarkRecord));
-          })
+          )
+            .then((response) => {
+              const remarks = Array.isArray(response) ? response : response?.results ?? [];
+              setStaffRemarks(remarks.map(mapStaffRemarkRecord));
+            })
+            .catch((error) => {
+              console.error("Failed to load staff remarks for authenticated context", error);
+              setStaffRemarks([]);
+            })
         );
 
-        await Promise.all(requests);
+        await Promise.allSettled(requests);
       } catch (error) {
         console.error("Failed to load authenticated context data", error);
       }
