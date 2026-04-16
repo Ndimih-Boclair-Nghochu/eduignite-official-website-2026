@@ -61,8 +61,7 @@ export const chatService = {
     return data;
   },
 
-  async deleteMessage(_conversationId: string, messageId?: string): Promise<void> {
-    if (!messageId) return;
+  async deleteMessage(messageId: string): Promise<void> {
     await apiClient.delete(API.CHAT.DELETE_MESSAGE(messageId));
   },
 };
