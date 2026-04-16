@@ -107,7 +107,7 @@ export default function ProfilePage() {
       setAvatarPreview(result.avatar_url);
       queryClient.invalidateQueries({ queryKey: ["profile-me"] });
       // Sync auth context
-      updateUser({ avatar: result.avatar_url } as any);
+      await updateUser({ avatar: result.avatar_url } as any);
       toast({ title: "Photo Updated", description: "Your profile picture has been saved." });
     } catch (err: any) {
       setAvatarPreview((user as any)?.avatar || "");

@@ -601,6 +601,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateUser = async (updates: Partial<User>) => {
     if (!userData) return;
     try {
+      if (Object.keys(updates).length === 1 && typeof updates.avatar !== "undefined") {
+        setUserData((prev) => (prev ? { ...prev, avatar: updates.avatar } : prev));
+        return;
+      }
+
       const savedUser = await usersService.updateProfile(updates);
       const newUser: User = {
         ...userData,

@@ -235,13 +235,7 @@ class UserViewSet(viewsets.ModelViewSet):
         user.is_license_paid = serializer.validated_data['is_license_paid']
         user.save(update_fields=['is_license_paid'])
 
-        return Response(
-            {
-                'detail': 'License status updated',
-                'is_license_paid': user.is_license_paid,
-            },
-            status=status.HTTP_200_OK,
-        )
+        return Response(UserDetailSerializer(user).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], permission_classes=[IsExecutive])
     @extend_schema(

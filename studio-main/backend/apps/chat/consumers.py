@@ -97,6 +97,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         text = data.get('text', '').strip()
         message_type = data.get('message_type', 'text')
         reply_to_id = data.get('reply_to')
+        client_temp_id = data.get('client_temp_id')
 
         if not text:
             await self.send(text_data=json.dumps({
@@ -129,6 +130,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         'created_at': message.created_at.isoformat(),
                         'reply_to': str(message.reply_to_id) if message.reply_to_id else None,
                         'conversation_id': str(self.conversation_id),
+                        'client_temp_id': client_temp_id,
                     }
                 }
             )

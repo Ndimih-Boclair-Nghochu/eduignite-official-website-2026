@@ -23,6 +23,53 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
+def build_user_payload(user):
+    school_data = None
+    if user.school:
+        school_data = {
+            'id': user.school.id,
+            'name': user.school.name,
+            'short_name': user.school.short_name,
+            'principal': user.school.principal,
+            'motto': user.school.motto,
+            'logo': user.school.logo,
+            'banner': user.school.banner,
+            'description': user.school.description,
+            'location': user.school.location,
+            'region': user.school.region,
+            'division': user.school.division,
+            'sub_division': user.school.sub_division,
+            'city_village': user.school.city_village,
+            'address': user.school.address,
+            'postal_code': user.school.postal_code,
+            'phone': user.school.phone,
+            'email': user.school.email,
+            'status': user.school.status,
+            'student_count': user.school.student_count,
+            'teacher_count': user.school.teacher_count,
+            'matricule': user.school.matricule,
+        }
+
+    return {
+        'id': str(user.id),
+        'uid': user.uid,
+        'matricule': user.matricule,
+        'name': user.name,
+        'email': user.email,
+        'phone': user.phone or '',
+        'whatsapp': user.whatsapp or '',
+        'role': user.role,
+        'school': school_data,
+        'avatar': user.avatar or None,
+        'is_license_paid': user.is_license_paid,
+        'ai_request_count': user.ai_request_count,
+        'is_active': user.is_active,
+        'date_joined': user.date_joined.isoformat() if user.date_joined else None,
+        'is_platform_executive': user.is_platform_executive,
+        'is_school_admin': user.is_school_admin,
+    }
+
+
 class MatriculeLoginView(APIView):
     """
     POST /auth/login/
@@ -74,14 +121,7 @@ class MatriculeLoginView(APIView):
         response_data = {
             'access_token': str(refresh.access_token),
             'refresh_token': str(refresh),
-            'user': {
-                'id': str(user.id),
-                'matricule': user.matricule,
-                'name': user.name,
-                'email': user.email,
-                'role': user.role,
-                'avatar': user.avatar or None,
-            },
+            'user': build_user_payload(user),
         }
 
         return Response(response_data, status=status.HTTP_200_OK)
@@ -143,14 +183,7 @@ class FirebaseLoginView(APIView):
         response_data = {
             'access_token': str(refresh.access_token),
             'refresh_token': str(refresh),
-            'user': {
-                'id': str(user.id),
-                'matricule': user.matricule,
-                'name': user.name,
-                'email': user.email,
-                'role': user.role,
-                'avatar': user.avatar or None,
-            },
+            'user': build_user_payload(user),
         }
 
         return Response(response_data, status=status.HTTP_200_OK)
@@ -467,31 +500,4 @@ class MeView(APIView):
         description='Get current user profile',
     )
     def get(self, request):
-        user = request.user
-        school_data = None
-        if user.school:
-            school_data = {
-                'id': user.school.id,
-                'name': user.school.name,
-                'short_name': user.school.short_name,
-                'location': user.school.location,
-            }
-
-        return Response(
-            {
-                'id': str(user.id),
-                'matricule': user.matricule,
-                'name': user.name,
-                'email': user.email,
-                'phone': user.phone or '',
-                'whatsapp': user.whatsapp or '',
-                'role': user.role,
-                'school': school_data,
-                'avatar': user.avatar or None,
-                'is_license_paid': user.is_license_paid,
-                'ai_request_count': user.ai_request_count,
-                'is_active': user.is_active,
-                'date_joined': user.date_joined.isoformat(),
-            },
-            status=status.HTTP_200_OK,
-        )
+        return Response(build_user_payload(request.user), status=status.HTTP_200_OK)

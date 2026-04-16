@@ -110,6 +110,7 @@ export default function ChatPage() {
   const [wsError, setWsError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
+  const [participantStatuses, setParticipantStatuses] = useState<Record<string, "online" | "offline">>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -179,6 +180,7 @@ export default function ChatPage() {
     if (!selectedConv) return;
     wsRef.current?.close();
     setWsError(null);
+    setParticipantStatuses({});
 
     const token = (typeof window !== "undefined"
       ? localStorage.getItem("eduignite_access_token") || localStorage.getItem("access_token")
@@ -216,8 +218,22 @@ export default function ChatPage() {
         const data = JSON.parse(event.data);
         const payload = data?.data ?? data?.message ?? data;
         if (data.type === "message" || data.message || data.data) {
-          setMessages((prev) => [...prev, payload]);
+          setMessages((prev) => {
+            const payloadId = payload?.id ? String(payload.id) : "";
+            const tempId = payload?.client_temp_id ? String(payload.client_temp_id) : "";
+            const deduped = prev.filter((msg) => {
+              if (payloadId && String(msg.id) === payloadId) return false;
+              if (tempId && String(msg.id) === tempId) return false;
+              return true;
+            });
+            return [...deduped, payload];
+          });
           scrollToBottom();
+        } else if (data.type === "user_status" && data.user_id) {
+          setParticipantStatuses((prev) => ({
+            ...prev,
+            [String(data.user_id)]: data.status === "online" ? "online" : "offline",
+          }));
         }
       } catch (parseErr) {
         console.error("[Chat WS] Failed to parse message:", event.data);
@@ -231,9 +247,10 @@ export default function ChatPage() {
     if (!messageText.trim() || !selectedConv) return;
     const text = messageText.trim();
     setMessageText("");
+    const clientTempId = `tmp_${Date.now()}`;
 
     const tempMsg = {
-      id: `tmp_${Date.now()}`,
+      id: clientTempId,
       sender_id: user?.id,
       sender_name: user?.name,
       sender_avatar: user?.avatar,
@@ -247,11 +264,22 @@ export default function ChatPage() {
     setIsSending(true);
 
     try {
-      const sent = await chatService.sendMessage(String(selectedConv.id), {
-        text,
-        conversation_id: String(selectedConv.id),
-      } as any);
-      setMessages((prev) => prev.map((m) => (m.id === tempMsg.id ? sent : m)));
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({
+            type: "message",
+            text,
+            conversation_id: String(selectedConv.id),
+            client_temp_id: clientTempId,
+          })
+        );
+      } else {
+        const sent = await chatService.sendMessage(String(selectedConv.id), {
+          text,
+          conversation_id: String(selectedConv.id),
+        } as any);
+        setMessages((prev) => prev.map((m) => (m.id === tempMsg.id ? sent : m)));
+      }
     } catch (err: any) {
       setMessages((prev) => prev.filter((m) => m.id !== tempMsg.id));
       toast({ variant: "destructive", title: "Send failed", description: parseDRFError(err) });
@@ -304,6 +332,21 @@ export default function ChatPage() {
     (u.email || "").toLowerCase().includes(userSearch.toLowerCase()) ||
     (u.role || "").toLowerCase().includes(userSearch.toLowerCase())
   );
+
+  const currentConversationDisplay = selectedConv
+    ? getConversationDisplay(selectedConv, user?.id)
+    : null;
+  const directOtherParticipant = selectedConv?.conversation_type === "direct"
+    ? (selectedConv.participants || []).find(
+        (p: any) => String(getParticipantId(p)) !== String(user?.id)
+      ) ?? null
+    : null;
+  const directOtherParticipantStatus = directOtherParticipant
+    ? participantStatuses[String(getParticipantId(directOtherParticipant))]
+    : undefined;
+  const conversationPresenceLabel = selectedConv?.conversation_type === "direct"
+    ? (directOtherParticipantStatus === "online" ? "Online" : wsConnected ? "Connected" : "Offline")
+    : (wsConnected ? "Live" : "Offline");
 
   if (user?.role === "SUPER_ADMIN") {
     return (
@@ -489,23 +532,18 @@ export default function ChatPage() {
                   <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setSelectedConv(null)}>
                     <ArrowLeft className="w-5 h-5" />
                   </Button>
-                  {(() => {
-                    const d = getConversationDisplay(selectedConv, user?.id);
-                    return (
-                      <>
+                  <>
                         <Avatar className="h-9 w-9">
-                          <AvatarImage src={d.avatar || ""} />
-                          <AvatarFallback>{d.name?.charAt(0) || "?"}</AvatarFallback>
+                          <AvatarImage src={currentConversationDisplay?.avatar || ""} />
+                          <AvatarFallback>{currentConversationDisplay?.name?.charAt(0) || "?"}</AvatarFallback>
                         </Avatar>
                         <div>
-                          <h3 className="font-bold text-sm leading-tight text-primary">{d.name}</h3>
+                          <h3 className="font-bold text-sm leading-tight text-primary">{currentConversationDisplay?.name}</h3>
                           <p className="text-[9px] text-muted-foreground uppercase font-black">
-                            {wsConnected ? "● Online" : "Offline"}
+                            {conversationPresenceLabel}
                           </p>
                         </div>
                       </>
-                    );
-                  })()}
                 </div>
                 <Button variant="ghost" size="icon">
                   <MoreVertical className="w-4 h-4 text-muted-foreground" />

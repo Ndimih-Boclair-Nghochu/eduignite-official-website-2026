@@ -94,6 +94,16 @@ export default function PlatformSettingsPage() {
   const isDesigner = user?.role === "DESIGNER";
   const isSuperUser = ["SUPER_ADMIN", "CEO", "CTO"].includes(user?.role || "");
 
+  const parsePlatformError = (err: any) => {
+    const data = err?.response?.data;
+    if (!data) return err?.message || "Validation error";
+    if (typeof data === "string") return data;
+    if (data.detail) return data.detail;
+    return Object.entries(data)
+      .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`)
+      .join(" | ");
+  };
+
   useEffect(() => {
     if (!settings) return;
     setFormData({
@@ -120,11 +130,13 @@ export default function PlatformSettingsPage() {
   const handleSaveFees = async () => {
     setIsSavingFees(true);
     try {
+      const nextFees: Record<string, string> = {};
       await Promise.all(
         FEE_ROLES.map(async ({ role }) => {
           const existing = fees.find((f: any) => f.role === role);
           const amount = parseFloat(feeAmounts[role] || "0");
           if (isNaN(amount) || amount < 0) return;
+          nextFees[role] = String(amount);
           if (existing) {
             await platformService.updateFee(String(existing.id), { amount, currency: existing.currency || "XAF" });
           } else {
@@ -132,10 +144,11 @@ export default function PlatformSettingsPage() {
           }
         })
       );
+      await updatePlatformSettings({ fees: nextFees });
       queryClient.invalidateQueries({ queryKey: ["platform"] });
       toast({ title: "License Fees Saved", description: "Annual license structure has been updated." });
     } catch (err: any) {
-      toast({ variant: "destructive", title: "Error", description: err?.response?.data?.detail || "Failed to save fees." });
+      toast({ variant: "destructive", title: "Error", description: parsePlatformError(err) || "Failed to save fees." });
     } finally {
       setIsSavingFees(false);
     }
@@ -144,11 +157,11 @@ export default function PlatformSettingsPage() {
   const handleSaveTutorials = async () => {
     setIsSavingTutorials(true);
     try {
-      await platformService.updatePlatformSettings({ tutorial_links: tutorialEdits } as any);
+      await updatePlatformSettings({ tutorialLinks: tutorialEdits });
       queryClient.invalidateQueries({ queryKey: ["platform", "settings"] });
       toast({ title: "Training Links Saved", description: "User training repository updated." });
     } catch (err: any) {
-      toast({ variant: "destructive", title: "Error", description: err?.response?.data?.detail || "Failed to save training links." });
+      toast({ variant: "destructive", title: "Error", description: parsePlatformError(err) || "Failed to save training links." });
     } finally {
       setIsSavingTutorials(false);
     }
@@ -174,7 +187,7 @@ export default function PlatformSettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["platform", "settings"] });
       toast({ title: "Logo Uploaded", description: "Platform logo has been saved." });
     } catch (err: any) {
-      toast({ variant: "destructive", title: "Upload Failed", description: err?.response?.data?.detail || "Could not upload logo." });
+      toast({ variant: "destructive", title: "Upload Failed", description: parsePlatformError(err) || "Could not upload logo." });
       setFormData((prev) => ({ ...prev, platformLogo: formData.platformLogo }));
     }
   };
@@ -207,7 +220,7 @@ export default function PlatformSettingsPage() {
         onError: (error: any) => {
           toast({
             title: "Error",
-            description: error?.response?.data?.message || "Failed to update settings",
+            description: parsePlatformError(error) || "Failed to update settings",
             variant: "destructive",
           });
         },
@@ -229,7 +242,7 @@ export default function PlatformSettingsPage() {
       onError: (error: any) => {
         toast({
           title: "Error",
-          description: error?.response?.data?.message || "Failed to add event",
+          description: parsePlatformError(error) || "Failed to add event",
           variant: "destructive",
         });
       },
@@ -244,7 +257,7 @@ export default function PlatformSettingsPage() {
       onError: (error: any) => {
         toast({
           title: "Error",
-          description: error?.response?.data?.message || "Failed to delete event",
+          description: parsePlatformError(error) || "Failed to delete event",
           variant: "destructive",
         });
       },

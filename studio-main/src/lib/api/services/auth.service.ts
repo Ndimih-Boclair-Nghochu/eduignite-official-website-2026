@@ -24,6 +24,10 @@ function normalizeUser(user: Record<string, any> | undefined): User {
   return {
     ...(user ?? {}),
     id: user?.id ?? "",
+    uid: user?.uid ?? "",
+    avatar: user?.avatar ?? "",
+    phone: user?.phone ?? "",
+    whatsapp: user?.whatsapp ?? "",
     name: user?.name ?? "",
     email: user?.email ?? "",
     role: user?.role ?? "STUDENT",
