@@ -41,7 +41,7 @@ class SchoolViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filter queryset based on user role."""
         user = self.request.user
-        queryset = School.objects.defer('matricule', 'principal_user')
+        queryset = School.objects.all()
         user_school = getattr(user, 'school', None)
 
         if user.is_platform_executive:

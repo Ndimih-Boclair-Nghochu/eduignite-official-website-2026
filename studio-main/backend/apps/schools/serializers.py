@@ -1,6 +1,10 @@
+from django.contrib.auth import get_user_model
+from django.db import transaction
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_serializer, OpenApiExample
 from .models import School, SchoolSettings
+
+User = get_user_model()
 
 
 @extend_schema_serializer(
@@ -29,11 +33,15 @@ class SchoolListSerializer(serializers.ModelSerializer):
             'id',
             'name',
             'short_name',
+            'principal',
+            'email',
+            'phone',
             'location',
             'status',
             'student_count',
             'teacher_count',
             'logo',
+            'matricule',
         ]
 
 
@@ -105,6 +113,7 @@ class SchoolDetailSerializer(serializers.ModelSerializer):
             'founded_year',
             'student_count',
             'teacher_count',
+            'matricule',
             'settings',
             'created_at',
             'updated_at',
@@ -189,7 +198,33 @@ class SchoolCreateSerializer(serializers.ModelSerializer):
         if not attrs.get('id'):
             short_name = attrs.get('short_name', '')
             attrs['id'] = short_name.strip().upper() or attrs['name'][:50].upper()
+        email = attrs.get('email')
+        if email and User.objects.filter(email=email).exists():
+            raise serializers.ValidationError(
+                {'email': 'This email is already used by another account.'}
+            )
         return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        school = School.objects.create(**validated_data)
+
+        principal_user = User.objects.create_user(
+            matricule=school.matricule,
+            name=school.principal,
+            email=school.email,
+            role='SCHOOL_ADMIN',
+            password='!pending_activation',
+            school=school,
+            is_active=True,
+            is_license_paid=False,
+        )
+
+        school.principal_user = principal_user
+        school.save(update_fields=['principal_user'])
+
+        SchoolSettings.objects.get_or_create(school=school)
+        return school
 
 
 @extend_schema_serializer(

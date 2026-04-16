@@ -900,8 +900,19 @@ export interface PlatformStats {
   users_by_role: Record<string, number>;
   total_students: number;
   total_teachers: number;
+  total_parents?: number;
   new_orders: number;
   total_revenue: string;
+  schools_by_status?: Array<{ status: string; count: number }>;
+  schools_by_region?: Array<{ region: string; count: number }>;
+  active_users?: number;
+  license_paid_count?: number;
+  license_unpaid_count?: number;
+  founder_count?: number;
+  executive_count?: number;
+  total_orders?: number;
+  total_student_enrollments?: number;
+  total_teachers_employed?: number;
 }
 
 export type LiveClassStatus = "upcoming" | "live" | "ended" | "cancelled";

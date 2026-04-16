@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-query';
 import { useCallback, useRef, useState, useEffect } from 'react';
 import { chatService } from '@/lib/api/services/chat.service';
+import { BASE_URL } from '@/lib/api/client';
 import { getAccessToken } from '@/lib/auth';
 import type {
   Conversation,
@@ -170,7 +171,21 @@ export function useChatWebSocket(
   useEffect(() => {
     if (!conversationId || !token) return;
 
-    const wsUrl = `${process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8001'}/ws/chat/${conversationId}/?token=${token}`;
+    let wsBase = process.env.NEXT_PUBLIC_WS_URL;
+    if (!wsBase) {
+      try {
+        const apiUrl = new URL(BASE_URL);
+        apiUrl.protocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+        apiUrl.pathname = '';
+        apiUrl.search = '';
+        apiUrl.hash = '';
+        wsBase = apiUrl.toString().replace(/\/$/, '');
+      } catch {
+        wsBase = 'ws://localhost:8000';
+      }
+    }
+
+    const wsUrl = `${wsBase}/ws/chat/${conversationId}/?token=${token}`;
 
     try {
       const ws = new WebSocket(wsUrl);
@@ -183,7 +198,7 @@ export function useChatWebSocket(
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          onMessage(data);
+          onMessage(data?.data ?? data?.message ?? data);
         } catch (error) {
           console.error('Failed to parse WebSocket message:', error);
         }

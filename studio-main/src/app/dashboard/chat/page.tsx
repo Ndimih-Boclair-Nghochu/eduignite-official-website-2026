@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { chatService } from "@/lib/api/services/chat.service";
 import { usersService } from "@/lib/api/services/users.service";
+import { BASE_URL } from "@/lib/api/client";
 
 const normalizeList = (payload: any) => {
   if (Array.isArray(payload)) return payload;
@@ -74,6 +75,21 @@ const getConversationDisplay = (conv: any, currentUserId: any) => {
     };
   }
   return { name: conv.name || "Group Chat", avatar: null };
+};
+
+const getWebSocketBaseUrl = () => {
+  if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
+
+  try {
+    const apiUrl = new URL(BASE_URL);
+    apiUrl.protocol = apiUrl.protocol === "https:" ? "wss:" : "ws:";
+    apiUrl.pathname = "";
+    apiUrl.search = "";
+    apiUrl.hash = "";
+    return apiUrl.toString().replace(/\/$/, "");
+  } catch {
+    return "ws://localhost:8000";
+  }
 };
 
 export default function ChatPage() {
@@ -173,7 +189,7 @@ export default function ChatPage() {
       return;
     }
 
-    const wsBase = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
+    const wsBase = getWebSocketBaseUrl();
     const wsUrl = `${wsBase}/ws/chat/${selectedConv.id}/?token=${token}`;
     let ws: WebSocket;
     try {
@@ -198,8 +214,9 @@ export default function ChatPage() {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === "message" || data.message) {
-          setMessages((prev) => [...prev, data.message ?? data]);
+        const payload = data?.data ?? data?.message ?? data;
+        if (data.type === "message" || data.message || data.data) {
+          setMessages((prev) => [...prev, payload]);
           scrollToBottom();
         }
       } catch (parseErr) {
