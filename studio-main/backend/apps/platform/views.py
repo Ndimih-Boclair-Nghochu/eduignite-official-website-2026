@@ -10,6 +10,7 @@ from drf_spectacular.utils import extend_schema
 import logging
 import os
 import uuid
+import base64
 
 from .models import PlatformSettings, PlatformFees, PublicEvent, TutorialLink
 from .serializers import (
@@ -82,22 +83,13 @@ class PlatformLogoUploadView(APIView):
         if file.size > 5 * 1024 * 1024:
             return Response({'detail': 'File too large. Maximum size is 5MB.'}, status=400)
 
-        ext = os.path.splitext(file.name)[1].lower() or '.png'
-        filename = f'platform_logo_{uuid.uuid4().hex}{ext}'
-        logo_dir = os.path.join(django_settings.MEDIA_ROOT, 'platform')
-        os.makedirs(logo_dir, exist_ok=True)
-        filepath = os.path.join(logo_dir, filename)
-
-        with open(filepath, 'wb+') as dest:
-            for chunk in file.chunks():
-                dest.write(chunk)
-
-        logo_path = f'{django_settings.MEDIA_URL}platform/{filename}'
+        encoded = base64.b64encode(file.read()).decode('utf-8')
+        logo_data_url = f'data:{file.content_type};base64,{encoded}'
         settings = PlatformSettings.load()
-        settings.logo = logo_path
+        settings.logo = logo_data_url
         settings.save(update_fields=['logo'])
 
-        return Response({'logo_url': logo_path}, status=200)
+        return Response({'logo_url': logo_data_url}, status=200)
 
 
 class PlatformFeesViewSet(viewsets.ModelViewSet):

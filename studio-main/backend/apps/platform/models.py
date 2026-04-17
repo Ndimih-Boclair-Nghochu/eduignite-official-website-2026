@@ -28,7 +28,7 @@ class PlatformSettings(models.Model):
     """Global platform settings (singleton pattern)."""
 
     name = models.CharField(max_length=255, default='EduIgnite')
-    logo = models.URLField(max_length=2000, null=True, blank=True)
+    logo = models.TextField(null=True, blank=True)
     payment_deadline = models.DateField(null=True, blank=True)
     honour_roll_threshold = models.DecimalField(
         max_digits=5,

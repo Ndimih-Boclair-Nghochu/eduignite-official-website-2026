@@ -8,6 +8,7 @@ from drf_spectacular.utils import extend_schema
 import logging
 import os
 import uuid
+import base64
 
 from .models import School, SchoolSettings
 from .serializers import (
@@ -138,24 +139,15 @@ class SchoolViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        ext = os.path.splitext(file.name)[1].lower() or '.png'
-        filename = f'{subdirectory}_{school.id}_{uuid.uuid4().hex}{ext}'
-        school_media_dir = os.path.join(django_settings.MEDIA_ROOT, 'schools', school.id)
-        os.makedirs(school_media_dir, exist_ok=True)
-        filepath = os.path.join(school_media_dir, filename)
-
-        with open(filepath, 'wb+') as destination:
-            for chunk in file.chunks():
-                destination.write(chunk)
-
-        media_path = f'{django_settings.MEDIA_URL}schools/{school.id}/{filename}'
-        setattr(school, field_name, media_path)
+        encoded = base64.b64encode(file.read()).decode('utf-8')
+        media_data_url = f'data:{file.content_type};base64,{encoded}'
+        setattr(school, field_name, media_data_url)
         school.save(update_fields=[field_name])
 
         return Response(
             {
-                f'{field_name}_url': media_path,
-                field_name: media_path,
+                f'{field_name}_url': media_data_url,
+                field_name: media_data_url,
             },
             status=status.HTTP_200_OK,
         )

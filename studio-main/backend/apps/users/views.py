@@ -12,6 +12,7 @@ from datetime import timedelta
 import logging
 import os
 import uuid
+import base64
 
 from .serializers import (
     UserListSerializer,
@@ -203,22 +204,12 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        ext = os.path.splitext(file.name)[1].lower() or '.jpg'
-        filename = f'{uuid.uuid4().hex}{ext}'
-
-        avatar_dir = os.path.join(django_settings.MEDIA_ROOT, 'avatars')
-        os.makedirs(avatar_dir, exist_ok=True)
-        filepath = os.path.join(avatar_dir, filename)
-
-        with open(filepath, 'wb+') as destination:
-            for chunk in file.chunks():
-                destination.write(chunk)
-
-        avatar_path = f'{django_settings.MEDIA_URL}avatars/{filename}'
-        request.user.avatar = avatar_path
+        encoded = base64.b64encode(file.read()).decode('utf-8')
+        avatar_data_url = f'data:{file.content_type};base64,{encoded}'
+        request.user.avatar = avatar_data_url
         request.user.save(update_fields=['avatar'])
 
-        return Response({'avatar_url': avatar_path}, status=status.HTTP_200_OK)
+        return Response({'avatar_url': avatar_data_url}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], permission_classes=[IsOwnerOrExecutive])
     @extend_schema(

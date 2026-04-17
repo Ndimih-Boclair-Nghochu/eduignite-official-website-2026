@@ -116,7 +116,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         blank=True,
         related_name='users',
     )
-    avatar = models.URLField(max_length=2000, null=True, blank=True)
+    avatar = models.TextField(null=True, blank=True)
     is_license_paid = models.BooleanField(default=False)
     ai_request_count = models.IntegerField(default=0)
     annual_avg = models.DecimalField(
