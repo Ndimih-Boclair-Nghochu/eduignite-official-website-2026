@@ -1,9 +1,9 @@
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.exceptions import ValidationError, PermissionDenied
-from django.shortcuts import get_object_or_404
-from django.db.models import Q, Count, Avg
+from rest_framework.exceptions import PermissionDenied
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
 from .models import Student, ParentStudentLink
 from .serializers import (
     StudentListSerializer, StudentDetailSerializer, StudentCreateSerializer,
@@ -14,6 +14,11 @@ from .serializers import (
 class StudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.select_related('user', 'school').prefetch_related('parent_links')
     permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['class_level', 'section', 'school']
+    search_fields = ['user__name', 'user__email', 'user__matricule', 'admission_number', 'student_class']
+    ordering_fields = ['admission_date', 'user__name', 'admission_number', 'annual_average']
+    ordering = ['user__name']
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -54,8 +59,12 @@ class StudentViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        student = serializer.save()
+        response_data = StudentDetailSerializer(student, context=self.get_serializer_context()).data
+        response_data['student_matricule'] = getattr(student.user, 'matricule', '')
+        primary_parent_link = student.parent_links.filter(is_primary=True).select_related('parent').first()
+        response_data['parent_matricule'] = getattr(primary_parent_link.parent, 'matricule', None) if primary_parent_link else None
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
         if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
@@ -111,7 +120,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         try:
             from django.contrib.auth import get_user_model
             User = get_user_model()
-            parent = User.objects.get(id=parent_id, role='PARENT')
+            parent = User.objects.get(id=parent_id, role='PARENT', school=student.school)
         except User.DoesNotExist:
             return Response(
                 {'error': 'Parent user not found.'},
@@ -138,7 +147,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             'class': student.student_class,
             'email': student.user.email,
             'school': str(student.school),
-            'qr_code': request.build_absolute_uri(student.qr_code.url) if student.qr_code else None
+            'qr_code': student.qr_code if student.qr_code else None
         }
         return Response(data)
 

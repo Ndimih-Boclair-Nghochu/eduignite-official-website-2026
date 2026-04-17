@@ -168,14 +168,16 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
     password = serializers.CharField(
         write_only=True,
-        required=True,
+        required=False,
+        allow_blank=True,
         validators=[validate_password],
     )
-    password_confirm = serializers.CharField(write_only=True, required=True)
+    password_confirm = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = User
         fields = [
+            'matricule',
             'name',
             'email',
             'phone',
@@ -185,31 +187,70 @@ class UserCreateSerializer(serializers.ModelSerializer):
             'password',
             'password_confirm',
         ]
+        read_only_fields = ['matricule']
 
     def validate(self, data):
         """Validate password confirmation."""
-        if data.get('password') != data.get('password_confirm'):
-            raise serializers.ValidationError({'password_confirm': 'Passwords do not match.'})
+        request = self.context.get('request')
+        requester = getattr(request, 'user', None)
+        requested_role = data.get('role')
+        requested_school = data.get('school')
+
+        allowed_roles_for_school_admin = {'SUB_ADMIN', 'TEACHER', 'BURSAR', 'LIBRARIAN', 'PARENT'}
+        allowed_roles_for_sub_admin = {'TEACHER', 'BURSAR', 'LIBRARIAN', 'PARENT'}
+
+        if requester and requester.is_authenticated and requester.is_school_admin and not requester.is_platform_executive:
+            if not requester.school:
+                raise serializers.ValidationError({'school': 'Your account is not linked to a school.'})
+
+            if requested_school and requested_school != requester.school:
+                raise serializers.ValidationError({'school': 'You can only create users inside your own school.'})
+
+            data['school'] = requester.school
+
+            if requester.role == 'SCHOOL_ADMIN' and requested_role not in allowed_roles_for_school_admin:
+                raise serializers.ValidationError({'role': 'School admins can only create sub-admin, teacher, bursar, librarian, or parent accounts.'})
+
+            if requester.role == 'SUB_ADMIN' and requested_role not in allowed_roles_for_sub_admin:
+                raise serializers.ValidationError({'role': 'Sub-admins can only create teacher, bursar, librarian, or parent accounts.'})
+
+        password = data.get('password') or ''
+        password_confirm = data.get('password_confirm') or ''
+        if password or password_confirm:
+            if password != password_confirm:
+                raise serializers.ValidationError({'password_confirm': 'Passwords do not match.'})
+        else:
+            data['password'] = ''
+            data['password_confirm'] = ''
         return data
 
     def create(self, validated_data):
         """Create user with auto-generated matricule."""
         validated_data.pop('password_confirm')
-        password = validated_data.pop('password')
+        password = validated_data.pop('password', '')
 
         matricule = self._generate_unique_matricule()
 
         user = User.objects.create_user(
             matricule=matricule,
-            password=password,
+            password=password or '!pending_activation',
             **validated_data,
         )
         return user
 
     def _generate_unique_matricule(self):
         """Generate unique matricule."""
+        role = self.validated_data.get('role')
+        prefix_map = {
+            'SUB_ADMIN': 'SUB',
+            'TEACHER': 'TCH',
+            'BURSAR': 'BUR',
+            'LIBRARIAN': 'LIB',
+            'PARENT': 'PAR',
+        }
+        prefix = prefix_map.get(role, 'USR')
         while True:
-            matricule = f'USR{uuid.uuid4().hex[:8].upper()}'
+            matricule = f'{prefix}{uuid.uuid4().hex[:8].upper()}'
             if not User.objects.filter(matricule=matricule).exists():
                 return matricule
 

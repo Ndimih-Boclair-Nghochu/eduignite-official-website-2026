@@ -774,13 +774,15 @@ export interface AcknowledgeRemarkRequest {
 }
 
 export interface CreateUserRequest {
-  matricule: string;
+  matricule?: string;
   name: string;
   email: string;
   password?: string;
+  password_confirm?: string;
   phone?: string;
   whatsapp?: string;
   role: UserRole;
+  school?: string;
   school_id?: string;
 }
 
@@ -822,20 +824,28 @@ export interface ToggleSchoolStatusRequest {
 export type UpdateSchoolSettingsRequest = Partial<SchoolSettings>;
 
 export interface CreateStudentRequest {
-  user_id?: string;
-  matricule?: string;
   name: string;
   email: string;
   phone?: string;
+  whatsapp?: string;
+  password?: string;
+  school?: string;
   student_class: string;
   class_level: string;
   section: string;
   date_of_birth?: string;
-  gender: "Male" | "Female";
+  gender: "male" | "female" | "other";
   guardian_name: string;
   guardian_phone: string;
+  guardian_whatsapp?: string;
   admission_number: string;
   admission_date: string;
+  parent_name?: string;
+  parent_email?: string;
+  parent_phone?: string;
+  parent_whatsapp?: string;
+  parent_relationship?: string;
+  create_parent_account?: boolean;
 }
 
 export type UpdateStudentRequest = Partial<CreateStudentRequest>;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -47,7 +47,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { usersService } from "@/lib/api/services/users.service";
 import { schoolsService } from "@/lib/api/services/schools.service";
 
-const STAFF_CREATION_ROLES = ["SCHOOL_ADMIN", "SUB_ADMIN", "TEACHER", "BURSAR", "LIBRARIAN"];
+const EXECUTIVE_STAFF_CREATION_ROLES = ["SCHOOL_ADMIN", "SUB_ADMIN", "TEACHER", "BURSAR", "LIBRARIAN"];
+const SCHOOL_ADMIN_STAFF_CREATION_ROLES = ["SUB_ADMIN", "TEACHER", "BURSAR", "LIBRARIAN", "PARENT"];
 
 const normalizeResults = (payload: any) => {
   if (Array.isArray(payload)) return payload;
@@ -166,7 +167,7 @@ export default function StaffPage() {
     email: "",
     phone: "",
     whatsapp: "",
-    role: "SCHOOL_ADMIN",
+    role: "TEACHER",
     school: "",
     password: "",
     passwordConfirm: "",
@@ -174,6 +175,17 @@ export default function StaffPage() {
 
   const isAdmin = ["SCHOOL_ADMIN", "SUB_ADMIN"].includes(user?.role || "");
   const isExecutive = ["SUPER_ADMIN", "CEO", "CTO", "COO"].includes(user?.role || "");
+  const creationRoles = isExecutive ? EXECUTIVE_STAFF_CREATION_ROLES : SCHOOL_ADMIN_STAFF_CREATION_ROLES;
+
+  useEffect(() => {
+    if (isAdmin && user?.school?.id) {
+      setNewStaff((current) => ({
+        ...current,
+        school: user.school?.id || "",
+        role: creationRoles.includes(current.role) ? current.role : "TEACHER",
+      }));
+    }
+  }, [creationRoles, isAdmin, user?.school?.id]);
 
   // Fetch staff list
   const { data: staffList = [] } = useUsers({
@@ -192,10 +204,14 @@ export default function StaffPage() {
   const acknowledgeRemarkMutation = useAcknowledgeRemark();
   const createUserMutation = useCreateUser();
 
-  const filteredStaff = staffList.filter((s: any) =>
-    s.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.id?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredStaff = staffList
+    .filter((staff: any) => ["SCHOOL_ADMIN", "SUB_ADMIN", "TEACHER", "BURSAR", "LIBRARIAN", "PARENT"].includes(staff.role))
+    .filter((s: any) =>
+      s.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.matricule?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.id?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
   const handleCreateRemark = async () => {
     if (!newRemark.staffId || !newRemark.message) {
@@ -236,7 +252,7 @@ export default function StaffPage() {
       !newStaff.role ||
       !newStaff.password ||
       !newStaff.passwordConfirm ||
-      !newStaff.school
+      !(newStaff.school || user?.school?.id)
     ) {
       toast({
         variant: "destructive",
@@ -254,7 +270,7 @@ export default function StaffPage() {
         phone: newStaff.phone.trim() || undefined,
         whatsapp: newStaff.whatsapp.trim() || undefined,
         role: newStaff.role,
-        school: newStaff.school,
+        school: newStaff.school || user?.school?.id,
         password: newStaff.password,
         password_confirm: newStaff.passwordConfirm,
       });
@@ -266,8 +282,8 @@ export default function StaffPage() {
         email: "",
         phone: "",
         whatsapp: "",
-        role: "SCHOOL_ADMIN",
-        school: "",
+        role: "TEACHER",
+        school: isAdmin ? user?.school?.id || "" : "",
         password: "",
         passwordConfirm: "",
       });
@@ -302,7 +318,7 @@ export default function StaffPage() {
           </h1>
           <p className="text-muted-foreground mt-1">Manage faculty, remarks, and institutional staff.</p>
         </div>
-        {isExecutive && (
+        {(isExecutive || isAdmin) && (
           <Button className="gap-2 shadow-xl h-14 px-8 rounded-2xl bg-primary text-white font-black uppercase tracking-widest text-xs" onClick={() => setIsCreateStaffDialogOpen(true)}>
             <Plus className="w-5 h-5" /> Create Staff Account
           </Button>
@@ -366,25 +382,25 @@ export default function StaffPage() {
                 <Card key={remark.id} className="border-none shadow-xl overflow-hidden bg-white rounded-[2rem] group hover:shadow-2xl transition-all">
                   <div className="flex flex-col md:flex-row">
                     <div className="w-full md:w-72 bg-accent/20 border-r p-6 flex flex-col items-center text-center space-y-4 shrink-0">
-                      <Avatar className="h-20 w-20 border-4 border-white shadow-lg">
-                        <AvatarImage src={remark.staffAvatar} />
-                        <AvatarFallback className="bg-primary text-white text-2xl font-bold">{remark.staffName?.charAt(0)}</AvatarFallback>
+                        <Avatar className="h-20 w-20 border-4 border-white shadow-lg">
+                        <AvatarImage src={remark.staffAvatar || remark.staff_avatar || remark.staff?.avatar} />
+                        <AvatarFallback className="bg-primary text-white text-2xl font-bold">{(remark.staffName || remark.staff_name || remark.staff?.name)?.charAt(0)}</AvatarFallback>
                       </Avatar>
                       <div className="space-y-1">
-                        <h3 className="font-black text-primary text-sm uppercase leading-tight">{remark.staffName}</h3>
+                        <h3 className="font-black text-primary text-sm uppercase leading-tight">{remark.staffName || remark.staff_name || remark.staff?.name}</h3>
                       </div>
-                      <Badge className={cn("w-full justify-center py-1 font-black uppercase text-[9px]", REMARK_TYPES.find(t => t.value === remark.type)?.color || "bg-gray-100 text-gray-700")}>
-                        {remark.type}
+                      <Badge className={cn("w-full justify-center py-1 font-black uppercase text-[9px]", REMARK_TYPES.find(t => t.value === (remark.type || remark.remark_type))?.color || "bg-gray-100 text-gray-700")}>
+                        {remark.type || remark.remark_type}
                       </Badge>
                     </div>
 
                     <div className="flex-1 p-6 md:p-8 flex flex-col">
                       <div className="bg-white/50 border border-accent rounded-2xl p-6 italic text-sm text-muted-foreground leading-relaxed flex-1 mb-4">
-                        "{remark.message}"
+                        "{remark.message || remark.text}"
                       </div>
                       <div className="pt-4 border-t flex justify-between items-center">
                         <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
-                          <Clock className="w-3 h-3 inline mr-1" /> {new Date(remark.createdAt).toLocaleString()}
+                          <Clock className="w-3 h-3 inline mr-1" /> {new Date(remark.createdAt || remark.created_at).toLocaleString()}
                         </span>
                       </div>
                     </div>
@@ -399,18 +415,18 @@ export default function StaffPage() {
                       <div className="p-3 bg-primary rounded-xl text-white">
                         <AlertCircle className="w-8 h-8" />
                       </div>
-                      <Badge className={cn("w-full justify-center py-1 font-black uppercase text-[9px]", REMARK_TYPES.find(t => t.value === remark.type)?.color || "bg-gray-100 text-gray-700")}>
-                        {remark.type}
+                      <Badge className={cn("w-full justify-center py-1 font-black uppercase text-[9px]", REMARK_TYPES.find(t => t.value === (remark.type || remark.remark_type))?.color || "bg-gray-100 text-gray-700")}>
+                        {remark.type || remark.remark_type}
                       </Badge>
                     </div>
 
                     <div className="flex-1 p-6 md:p-8 flex flex-col">
                       <div className="bg-white/50 border border-accent rounded-2xl p-6 italic text-sm text-muted-foreground leading-relaxed flex-1 mb-4">
-                        "{remark.message}"
+                        "{remark.message || remark.text}"
                       </div>
                       <div className="pt-4 border-t flex justify-between items-center">
                         <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
-                          <Clock className="w-3 h-3 inline mr-1" /> {new Date(remark.createdAt).toLocaleString()}
+                          <Clock className="w-3 h-3 inline mr-1" /> {new Date(remark.createdAt || remark.created_at).toLocaleString()}
                         </span>
                         <Button
                           className="gap-2 shadow-lg"
@@ -466,7 +482,7 @@ export default function StaffPage() {
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
                   <SelectContent>
-                    {STAFF_CREATION_ROLES.map((role) => (
+                    {creationRoles.map((role) => (
                       <SelectItem key={role} value={role}>{role.replace(/_/g, " ")}</SelectItem>
                     ))}
                   </SelectContent>
@@ -474,12 +490,12 @@ export default function StaffPage() {
               </div>
               <div className="space-y-2">
                 <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">School</Label>
-                <Select value={newStaff.school} onValueChange={(value) => setNewStaff({ ...newStaff, school: value })}>
+                <Select value={newStaff.school} onValueChange={(value) => setNewStaff({ ...newStaff, school: value })} disabled={isAdmin}>
                   <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl font-bold">
                     <SelectValue placeholder="Select school" />
                   </SelectTrigger>
                   <SelectContent>
-                    {schoolOptions.map((school: any) => (
+                    {(isAdmin ? schoolOptions.filter((school: any) => school.id === user?.school?.id) : schoolOptions).map((school: any) => (
                       <SelectItem key={school.id} value={school.id}>{school.name}</SelectItem>
                     ))}
                   </SelectContent>

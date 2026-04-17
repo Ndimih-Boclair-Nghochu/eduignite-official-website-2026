@@ -1,559 +1,591 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { useRouter } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import axios from "axios";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
 import {
-  Plus,
-  Search,
-  User,
-  Users,
-  UserPlus,
-  ShieldCheck,
-  CheckCircle2,
-  Lock,
-  Loader2,
-  Info,
-  BookOpen,
-  Download,
-  FileDown,
-  Filter,
-  GraduationCap,
-  BookMarked,
-  MoreVertical,
-  Pencil,
-  UserX,
-  UserCheck,
-  Eye,
-  Heart,
-  Mail,
-  Smartphone,
-  MessageCircle,
-  X,
-  Network,
-  ArrowLeft,
-  CalendarDays,
-  MapPin,
-  Baby,
-  Venus,
-  Mars,
-  Building2,
-  Printer,
-  QrCode,
-  ChevronRight,
-  UserRound,
-  Fingerprint,
-  UsersRound,
-  History,
-  AlertCircle,
-  TrendingUp,
-  ArrowUpCircle,
-  LogOut,
-  UserRoundCheck,
-  Zap,
-  FileText
-} from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+  useCreateStudent,
+  useHonourRoll,
+  useStudents,
+  useUpdateStudent,
+} from "@/lib/hooks/useStudents";
 import { useToast } from "@/hooks/use-toast";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
-  DialogFooter
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
-import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Loader2, Plus, Search, Sparkles, UserPlus, Users } from "lucide-react";
+import type { CreateStudentRequest, Student, UpdateStudentRequest } from "@/lib/api/types";
 
-const CLASSES = ["6ème / Form 1", "5ème / Form 2", "4ème / Form 3", "3ème / Form 4", "2nde / Form 5", "1ère / Lower Sixth", "Terminale / Upper Sixth"];
-const SECTIONS = ["Anglophone Section", "Francophone Section", "Technical Section"];
-const SUBJECTS = ["Advanced Physics", "Mathematics", "General Chemistry", "English Literature", "History"];
+const CLASS_LEVEL_OPTIONS = [
+  { value: "form1", label: "Form 1" },
+  { value: "form2", label: "Form 2" },
+  { value: "form3", label: "Form 3" },
+  { value: "form4", label: "Form 4" },
+  { value: "form5", label: "Form 5" },
+  { value: "lower_sixth", label: "Lower Sixth" },
+  { value: "upper_sixth", label: "Upper Sixth" },
+];
 
-// Hooks for API calls (to be implemented in hooks directory)
-const useStudents = (params: any) => {
-  return useQuery({
-    queryKey: ["students", params],
-    queryFn: async () => {
-      const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/students`, { params });
-      return data;
-    },
-    initialData: [],
-  });
+const SECTION_OPTIONS = [
+  { value: "general", label: "General" },
+  { value: "science", label: "Science" },
+  { value: "arts", label: "Arts" },
+  { value: "commercial", label: "Commercial" },
+];
+
+const GENDER_OPTIONS = [
+  { value: "male", label: "Male" },
+  { value: "female", label: "Female" },
+  { value: "other", label: "Other" },
+];
+
+const RELATIONSHIP_OPTIONS = [
+  { value: "father", label: "Father" },
+  { value: "mother", label: "Mother" },
+  { value: "guardian", label: "Guardian" },
+  { value: "other", label: "Other" },
+];
+
+const emptyForm: CreateStudentRequest = {
+  name: "",
+  email: "",
+  phone: "",
+  whatsapp: "",
+  password: "",
+  student_class: "",
+  class_level: "form1",
+  section: "general",
+  date_of_birth: "",
+  gender: "male",
+  guardian_name: "",
+  guardian_phone: "",
+  guardian_whatsapp: "",
+  admission_number: "",
+  admission_date: "",
+  parent_name: "",
+  parent_email: "",
+  parent_phone: "",
+  parent_whatsapp: "",
+  parent_relationship: "guardian",
+  create_parent_account: false,
 };
 
-const useHonourRoll = () => {
-  return useQuery({
-    queryKey: ["honour-roll"],
-    queryFn: async () => {
-      const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/students/honour-roll`);
-      return data;
-    },
-    initialData: [],
-  });
+type AdmissionResult = {
+  student_matricule?: string;
+  parent_matricule?: string | null;
 };
 
-const useClassList = (selectedClass: string) => {
-  return useQuery({
-    queryKey: ["students", selectedClass],
-    queryFn: async () => {
-      const { data } = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/students/class/${selectedClass}`);
-      return data;
-    },
-    enabled: selectedClass !== "all",
-    initialData: [],
-  });
-};
-
-const useCreateStudent = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (newStudent: any) => {
-      const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/students`, newStudent);
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["students"] });
-    },
-  });
-};
+function studentInitials(student: Student) {
+  const name = student.user?.name || "Student";
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
 
 export default function StudentsPage() {
-  const { user, isLoading: isAuthLoading } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
-  const router = useRouter();
-
   const [searchTerm, setSearchTerm] = useState("");
-  const [classFilter, setClassFilter] = useState("all");
-  const [sectionFilter, setSectionFilter] = useState("all");
-  const [subjectFilter, setSubjectFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("active");
-
   const [isAdmissionOpen, setIsAdmissionOpen] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isPromotionProcessing, setIsPromotionProcessing] = useState(false);
+  const [createdResult, setCreatedResult] = useState<AdmissionResult | null>(null);
+  const [formData, setFormData] = useState<CreateStudentRequest>(emptyForm);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [editData, setEditData] = useState<UpdateStudentRequest>({});
 
-  const [editingUser, setEditingUser] = useState<any>(null);
-
-  const [newStudent, setNewStudent] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    whatsapp: "",
-    dob: "",
-    gender: "Male",
-    region: "Littoral",
-    division: "",
-    subDivision: "",
-    placeOfBirth: "",
-    guardianId: "",
-    section: "Anglophone Section",
-    class: "2nde / Form 5",
+  const studentsQuery = useStudents({
+    search: searchTerm || undefined,
+    ordering: "user__name",
   });
-
-  const isAdmin = ["SCHOOL_ADMIN", "SUB_ADMIN"].includes(user?.role || "");
-  const isTeacher = user?.role === "TEACHER";
-
-  // Fetch students with filters
-  const { data: studentList = [] } = useStudents({
-    classFilter: classFilter !== "all" ? classFilter : undefined,
-    statusFilter: statusFilter !== "all" ? statusFilter : undefined,
-  });
-
+  const honourRollQuery = useHonourRoll();
   const createStudentMutation = useCreateStudent();
+  const updateStudentMutation = useUpdateStudent();
 
-  const filteredStudents = useMemo(() => (studentList || []).filter(s => {
-    const matchesSearch = (s.name?.toLowerCase().includes(searchTerm.toLowerCase()) || s.id?.toLowerCase().includes(searchTerm.toLowerCase())) ?? false;
-    const matchesClass = classFilter === "all" || s.class === classFilter;
-    const matchesSection = sectionFilter === "all" || s.section === sectionFilter;
-    const matchesStatus = statusFilter === "all" || s.status === statusFilter;
-    const matchesSubject = subjectFilter === "all" || s.subjects?.includes(subjectFilter);
-    return matchesSearch && matchesClass && matchesSection && matchesStatus && matchesSubject;
-  }), [studentList, searchTerm, classFilter, sectionFilter, statusFilter, subjectFilter]);
+  const students = studentsQuery.data?.results ?? [];
+  const honourRoll = Array.isArray(honourRollQuery.data)
+    ? honourRollQuery.data
+    : honourRollQuery.data?.results ?? [];
 
-  const promotionEligible = useMemo(() => (studentList || []).filter(s => s.status === 'active'), [studentList]);
+  const activeEnrollment = studentsQuery.data?.count ?? students.length;
+  const linkedParents = useMemo(
+    () => students.filter((student: any) => (student.parent_count ?? 0) > 0).length,
+    [students]
+  );
 
-  const handlePromoteStudents = () => {
-    setIsPromotionProcessing(true);
-    setTimeout(() => {
-      setIsPromotionProcessing(false);
-      toast({ title: "Promotion Cycle Complete", description: "Eligible students have been advanced." });
-    }, 2500);
-  };
-
-  const handleWithdrawStudent = (uid: string) => {
-    toast({ variant: "destructive", title: "Student Withdrawn" });
-  };
-
-  const handleFinalizeAdmission = async () => {
-    if (!newStudent.name) return;
-    setIsProcessing(true);
-    try {
-      await createStudentMutation.mutateAsync(newStudent);
-      setIsProcessing(false);
-      setIsAdmissionOpen(false);
-      setNewStudent({
-        name: "",
-        email: "",
-        phone: "",
-        whatsapp: "",
-        dob: "",
-        gender: "Male",
-        region: "Littoral",
-        division: "",
-        subDivision: "",
-        placeOfBirth: "",
-        guardianId: "",
-        section: "Anglophone Section",
-        class: "2nde / Form 5",
+  useEffect(() => {
+    if (editingStudent) {
+      setEditData({
+        name: editingStudent.user?.name ?? "",
+        email: editingStudent.user?.email ?? "",
+        phone: editingStudent.user?.phone ?? "",
+        whatsapp: editingStudent.user?.whatsapp ?? "",
+        student_class: editingStudent.student_class ?? "",
+        class_level: editingStudent.class_level ?? "form1",
+        section: editingStudent.section ?? "general",
+        date_of_birth: editingStudent.date_of_birth ?? "",
+        gender: (editingStudent.gender?.toLowerCase?.() as "male" | "female" | "other") ?? "male",
+        guardian_name: editingStudent.guardian_name ?? "",
+        guardian_phone: editingStudent.guardian_phone ?? "",
+        guardian_whatsapp: (editingStudent as any).guardian_whatsapp ?? "",
       });
-      toast({ title: "Student Admitted", description: "New student added successfully." });
-    } catch (error) {
-      setIsProcessing(false);
-      toast({ variant: "destructive", title: "Error", description: "Failed to create student." });
+    }
+  }, [editingStudent]);
+
+  const handleChange = (field: keyof CreateStudentRequest, value: string | boolean) => {
+    setFormData((current) => ({ ...current, [field]: value }));
+  };
+
+  const resetAdmissionForm = () => {
+    setFormData({
+      ...emptyForm,
+      admission_date: new Date().toISOString().slice(0, 10),
+    });
+  };
+
+  const openAdmissionDialog = () => {
+    resetAdmissionForm();
+    setIsAdmissionOpen(true);
+  };
+
+  const handleSubmitAdmission = async () => {
+    if (
+      !formData.name.trim() ||
+      !formData.email.trim() ||
+      !formData.student_class.trim() ||
+      !formData.guardian_name.trim() ||
+      !formData.guardian_phone.trim() ||
+      !formData.admission_number.trim() ||
+      !formData.admission_date
+    ) {
+      toast({
+        variant: "destructive",
+        title: "Incomplete registration",
+        description: "Complete the learner, guardian, class, and admission details before submitting.",
+      });
+      return;
+    }
+
+    try {
+      const created = await createStudentMutation.mutateAsync({
+        ...formData,
+        school: user?.school?.id,
+      });
+
+      setCreatedResult({
+        student_matricule: (created as any)?.student_matricule,
+        parent_matricule: (created as any)?.parent_matricule,
+      });
+      setIsAdmissionOpen(false);
+      resetAdmissionForm();
+      toast({
+        title: "Student registered",
+        description: "The student profile, school linkage, and optional parent account were created successfully.",
+      });
+    } catch (error: any) {
+      const firstError =
+        error?.response?.data?.detail ||
+        error?.response?.data?.email?.[0] ||
+        error?.response?.data?.admission_number?.[0] ||
+        error?.response?.data?.parent_email?.[0] ||
+        "The student registration could not be completed.";
+      toast({
+        variant: "destructive",
+        title: "Registration failed",
+        description: firstError,
+      });
     }
   };
 
-  const handleExportPDF = () => {
-    toast({ title: "PDF Generation Started", description: "Your filtered student list is being processed for download." });
-  };
+  const handleSaveEdit = async () => {
+    if (!editingStudent) return;
 
-  const handleSaveEdit = () => {
-    if (!editingUser.name) return;
-    setIsProcessing(true);
-    setTimeout(() => {
-      setIsProcessing(false);
-      setEditingUser(null);
-      toast({ title: "Identity Updated" });
-    }, 800);
+    try {
+      await updateStudentMutation.mutateAsync({
+        id: editingStudent.id,
+        data: editData,
+      });
+      toast({
+        title: "Student updated",
+        description: "The learner record was updated successfully.",
+      });
+      setEditingStudent(null);
+      setEditData({});
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Update failed",
+        description:
+          error?.response?.data?.detail ||
+          error?.response?.data?.email?.[0] ||
+          "We could not save the learner changes.",
+      });
+    }
   };
-
-  if (isAuthLoading) return null;
 
   return (
     <div className="space-y-8 pb-20">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-start sm:items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.back()} className="rounded-full hover:bg-white shadow-sm shrink-0">
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-primary font-headline flex items-start sm:items-center gap-3">
-              <div className="p-2 bg-primary rounded-xl shadow-lg">
-                <GraduationCap className="w-6 h-6 text-secondary" />
-              </div>
-              {isTeacher ? "My Students" : "Student Governance"}
-            </h1>
-            <p className="text-muted-foreground mt-1 text-sm">
-              {isTeacher ? "Manage your assigned cohorts and subjects." : "Manage lifecycle from admission to graduation."}
-            </p>
-          </div>
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="flex items-center gap-3 text-3xl font-bold text-primary font-headline">
+            <div className="rounded-xl bg-primary p-2 text-white shadow-lg">
+              <Users className="h-6 w-6 text-secondary" />
+            </div>
+            Student Admissions
+          </h1>
+          <p className="mt-1 text-muted-foreground">
+            Register learners, link guardians and parents, and keep a clean school-wide registry.
+          </p>
         </div>
+        <Button className="h-14 gap-2 rounded-2xl px-8 font-black uppercase tracking-widest text-xs shadow-xl" onClick={openAdmissionDialog}>
+          <Plus className="h-5 w-5" />
+          Register Student
+        </Button>
+      </div>
 
-        <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-          {isTeacher ? (
-            <Button className="flex-1 md:flex-none h-12 rounded-2xl font-bold gap-2 bg-secondary text-primary hover:bg-secondary/90 shadow-lg" onClick={handleExportPDF}>
-              <FileText className="w-4 h-4" /> Export Filtered (PDF)
-            </Button>
-          ) : (
-            <>
-              <Button variant="outline" className="flex-1 md:flex-none h-12 rounded-2xl font-bold gap-2 border-primary/10 bg-white" onClick={() => toast({ title: "Export Started" })}>
-                <FileDown className="w-4 h-4 text-primary" /> Export
-              </Button>
-              <Button className="flex-[2] md:flex-none gap-2 shadow-lg h-12 px-6 rounded-2xl font-bold" onClick={() => setIsAdmissionOpen(true)}>
-                <UserPlus className="w-5 h-5" /> New Admission
-              </Button>
-            </>
-          )}
-        </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="border-none shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Active Enrollment</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-black text-primary">{activeEnrollment}</div>
+            <p className="text-xs text-muted-foreground">Students currently linked to {user?.school?.name || "your school"}.</p>
+          </CardContent>
+        </Card>
+        <Card className="border-none shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Parent Linkage</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-black text-primary">{linkedParents}</div>
+            <p className="text-xs text-muted-foreground">Students already tied to at least one parent account.</p>
+          </CardContent>
+        </Card>
+        <Card className="border-none shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Honour Roll</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-black text-primary">{honourRoll.length}</div>
+            <p className="text-xs text-muted-foreground">Learners currently above the school honour-roll threshold.</p>
+          </CardContent>
+        </Card>
       </div>
 
       <Tabs defaultValue="registry" className="w-full">
-        <TabsList className={cn("grid w-full mb-8 bg-white shadow-sm border h-auto p-1.5 rounded-3xl", isAdmin ? "grid-cols-2 sm:w-auto sm:max-w-[500px]" : "grid-cols-1 sm:w-auto sm:max-w-[300px]")}>
-          <TabsTrigger value="registry" className="gap-2 py-3 rounded-2xl transition-all font-bold text-xs sm:text-sm">
-            <Users className="w-4 h-4" /> Student Registry
+        <TabsList className="grid h-auto w-full max-w-xl grid-cols-2 rounded-3xl border bg-white p-1.5 shadow-sm">
+          <TabsTrigger value="registry" className="rounded-2xl py-3 font-bold">
+            Student Registry
           </TabsTrigger>
-          {isAdmin && (
-            <TabsTrigger value="promotion" className="gap-2 py-3 rounded-2xl transition-all font-bold text-xs sm:text-sm">
-              <ArrowUpCircle className="w-4 h-4" /> Promotion Center
-            </TabsTrigger>
-          )}
+          <TabsTrigger value="honour-roll" className="rounded-2xl py-3 font-bold">
+            Honour Roll
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="registry" className="animate-in fade-in slide-in-from-bottom-2 mt-0 space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 bg-white p-4 rounded-3xl border shadow-sm items-end">
-            <div className="space-y-1.5">
-              <Label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Search Registry</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input placeholder="Name or ID..." className="pl-10 h-11 bg-accent/20 border-none rounded-xl text-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-              </div>
-            </div>
-            {isTeacher && (
-              <div className="space-y-1.5">
-                <Label className="text-[10px] font-black uppercase text-muted-foreground ml-1">My Subjects</Label>
-                <Select value={subjectFilter} onValueChange={setSubjectFilter}>
-                  <SelectTrigger className="h-11 bg-accent/20 border-none rounded-xl font-bold text-xs"><SelectValue placeholder="All Subjects" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All My Subjects</SelectItem>
-                    {SUBJECTS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="space-y-1.5">
-              <Label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Class Level</Label>
-              <Select value={classFilter} onValueChange={setClassFilter}>
-                <SelectTrigger className="h-11 bg-accent/20 border-none rounded-xl font-bold text-xs"><SelectValue placeholder="All Classes" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Entire School</SelectItem>
-                  {CLASSES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            {!isTeacher && (
-              <div className="space-y-1.5">
-                <Label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Lifecycle Status</Label>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="h-11 bg-accent/20 border-none rounded-xl font-bold text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Global (All)</SelectItem>
-                    <SelectItem value="active">Active Students</SelectItem>
-                    <SelectItem value="graduated">Alumni</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="space-y-1.5">
-              <Label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Section</Label>
-              <Select value={sectionFilter} onValueChange={setSectionFilter}>
-                <SelectTrigger className="h-11 bg-accent/20 border-none rounded-xl font-bold text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Sections</SelectItem>
-                  {SECTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+        <TabsContent value="registry" className="mt-6 space-y-6">
+          <div className="flex items-center gap-4 rounded-2xl border bg-white p-4 shadow-sm">
+            <Search className="ml-1 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search by learner name, email, matricule, or admission number..."
+              className="border-none bg-transparent focus-visible:ring-0"
+            />
           </div>
 
-          <Card className="border-none shadow-xl overflow-hidden rounded-[2rem] sm:rounded-[2.5rem] bg-white">
-            <CardContent className="p-0 overflow-x-auto scrollbar-thin">
-              <Table className="min-w-[640px]">
-                <TableHeader className="bg-accent/10 uppercase text-[9px] font-black tracking-widest border-b border-accent/20">
-                  <TableRow>
-                    <TableHead className="pl-8 py-4">Student Profile</TableHead>
-                    <TableHead>Academic Level</TableHead>
-                    <TableHead className="text-center">Status</TableHead>
-                    {!isTeacher && <TableHead className="text-right pr-8">Actions</TableHead>}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredStudents.map((s: any) => (
-                    <TableRow key={s.uid} className="group hover:bg-accent/5 transition-colors h-16 border-b last:border-0">
-                      <TableCell className="pl-8">
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-10 w-10 border-2 border-white shadow-sm ring-1 ring-accent shrink-0">
-                            <AvatarImage src={s.avatar} alt={s.name} />
-                            <AvatarFallback className="bg-primary/5 text-primary text-xs font-bold">{s.name?.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          <div className="flex flex-col">
-                            <span className="font-bold text-sm text-primary leading-none mb-1">{s.name?.split(' ')[0]}</span>
-                            <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase">{s.id}</span>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-[9px] border-primary/10 text-primary font-bold uppercase">{s.class}</Badge>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge className={cn(
-                          "text-[8px] font-black uppercase px-3 h-5 border-none",
-                          s.status === 'active' ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
-                        )}>
-                          {s.status === 'active' ? 'ENROLLED' : 'ALUMNI'}
+          <div className="grid gap-6 lg:grid-cols-2">
+            {studentsQuery.isLoading ? (
+              <Card className="border-none shadow-sm lg:col-span-2">
+                <CardContent className="flex h-40 items-center justify-center gap-3">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <span className="text-sm text-muted-foreground">Loading student registry...</span>
+                </CardContent>
+              </Card>
+            ) : students.length === 0 ? (
+              <Card className="border-none shadow-sm lg:col-span-2">
+                <CardContent className="flex h-40 flex-col items-center justify-center gap-3 text-center">
+                  <UserPlus className="h-10 w-10 text-primary/30" />
+                  <div>
+                    <p className="font-bold text-primary">No students found yet</p>
+                    <p className="text-sm text-muted-foreground">Use the registration flow to onboard your first learner.</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              students.map((student) => (
+                <Card key={student.id} className="overflow-hidden rounded-[2rem] border-none shadow-xl">
+                  <CardHeader className="flex flex-row items-start gap-4 pb-4">
+                    <Avatar className="h-16 w-16 rounded-2xl border-2 border-primary/10 shadow-lg">
+                      <AvatarImage src={student.user?.avatar} alt={student.user?.name} />
+                      <AvatarFallback className="bg-primary text-lg font-black text-white">
+                        {studentInitials(student)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <CardTitle className="truncate text-lg font-black uppercase text-primary">
+                        {student.user?.name}
+                      </CardTitle>
+                      <CardDescription className="mt-1 text-xs">
+                        {student.user?.email || "No email"} · {student.admission_number}
+                      </CardDescription>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Badge variant="outline" className="border-primary/10 text-[10px] font-bold uppercase text-primary">
+                          {student.student_class}
                         </Badge>
-                      </TableCell>
-                      {!isTeacher && (
-                        <TableCell className="text-right pr-8">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-primary/5">
-                                <MoreVertical className="w-4 h-4 text-primary/40 group-hover:text-primary transition-colors" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56 rounded-2xl shadow-xl border-none p-2">
-                              <DropdownMenuLabel className="text-[10px] uppercase font-black opacity-40 px-3">Governance Actions</DropdownMenuLabel>
-                              <DropdownMenuItem className="gap-3 rounded-xl cursor-pointer" onClick={() => router.push(`/dashboard/children/view?id=${s.id}`)}>
-                                <Eye className="w-4 h-4 text-primary/60" />
-                                <span className="font-bold text-xs">Access Dossier</span>
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="gap-3 rounded-xl cursor-pointer" onClick={() => setEditingUser({...s})}>
-                                <Pencil className="w-4 h-4 text-primary/60" />
-                                <span className="font-bold text-xs">Update Profile</span>
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator className="bg-accent" />
-                              <DropdownMenuItem className="text-destructive gap-3 rounded-xl cursor-pointer" onClick={() => handleWithdrawStudent(s.uid)}>
-                                <LogOut className="w-4 h-4" />
-                                <span className="font-bold text-xs">Formal Withdrawal</span>
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                        <Badge className="bg-secondary/15 text-[10px] font-bold uppercase text-primary">
+                          {student.class_level.replace("_", " ")}
+                        </Badge>
+                        {((student as any).parent_count ?? 0) > 0 ? (
+                          <Badge className="bg-green-100 text-[10px] font-bold uppercase text-green-700">
+                            {(student as any).parent_count} parent link
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-amber-100 text-[10px] font-bold uppercase text-amber-700">
+                            No parent linked yet
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-3 rounded-2xl bg-accent/10 p-4 text-sm md:grid-cols-2">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Guardian</p>
+                        <p className="font-semibold text-primary">{student.guardian_name}</p>
+                        <p className="text-xs text-muted-foreground">{student.guardian_phone}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Student Matricule</p>
+                        <p className="font-semibold text-primary">{student.user?.matricule || "Pending"}</p>
+                        <p className="text-xs text-muted-foreground">Admission date: {student.admission_date}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      <Button variant="outline" className="rounded-xl border-primary/10 font-bold text-primary" onClick={() => setEditingStudent(student)}>
+                        Edit Learner
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="honour-roll" className="mt-6">
+          <Card className="border-none shadow-xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl font-black uppercase text-primary">
+                <Sparkles className="h-5 w-5 text-secondary" />
+                Honour Roll
+              </CardTitle>
+              <CardDescription>Students meeting the academic recognition threshold configured for this school.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {honourRollQuery.isLoading ? (
+                <div className="flex items-center gap-3 py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <span className="text-sm text-muted-foreground">Loading honour roll...</span>
+                </div>
+              ) : honourRoll.length === 0 ? (
+                <p className="py-8 text-sm text-muted-foreground">No learners have reached the honour-roll threshold yet.</p>
+              ) : (
+                honourRoll.map((student: any) => (
+                  <div key={student.id} className="flex items-center justify-between rounded-2xl border p-4">
+                    <div>
+                      <p className="font-bold text-primary">{student.user?.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {student.student_class} · {student.admission_number}
+                      </p>
+                    </div>
+                    <Badge className="bg-green-100 text-green-700">{student.annual_average}/20</Badge>
+                  </div>
+                ))
+              )}
             </CardContent>
           </Card>
         </TabsContent>
-
-        <TabsContent value="promotion" className="animate-in fade-in slide-in-from-bottom-2 mt-0 space-y-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            <div className="lg:col-span-8 space-y-6">
-              <Card className="border-none shadow-sm bg-white overflow-hidden rounded-[2rem] sm:rounded-[2.5rem]">
-                <CardHeader className="bg-primary p-5 sm:p-8 text-white">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-white/10 rounded-2xl text-secondary">
-                        <ArrowUpCircle className="w-8 h-8" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-xl md:text-2xl font-black uppercase tracking-tight">Promotion Cycle</CardTitle>
-                        <CardDescription className="text-white/60">Automated advancement based on 3rd term results.</CardDescription>
-                      </div>
-                    </div>
-                    <Button
-                      className="bg-secondary text-primary hover:bg-secondary/90 h-12 px-8 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg gap-2"
-                      onClick={handlePromoteStudents}
-                      disabled={isPromotionProcessing}
-                    >
-                      {isPromotionProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-                      Execute Promotion
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0 overflow-x-auto">
-                  <Table className="min-w-[640px]">
-                    <TableHeader className="bg-accent/10 uppercase text-[9px] font-black tracking-widest">
-                      <TableRow>
-                        <TableHead className="pl-8 py-4">Student Profile</TableHead>
-                        <TableHead>Current Class</TableHead>
-                        <TableHead className="text-center">Annual Mean</TableHead>
-                        <TableHead className="text-right pr-8">Transition Plan</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {promotionEligible.map((s: any) => {
-                        const isPassed = (s.annualAvg || 0) >= 10;
-                        return (
-                          <TableRow key={s.uid} className="hover:bg-accent/5 h-16 border-b last:border-0">
-                            <TableCell className="pl-8">
-                              <div className="flex items-center gap-3">
-                                <Avatar className="h-8 w-8 border-2 border-white shadow-sm ring-1 ring-accent shrink-0">
-                                  <AvatarImage src={s.avatar} alt={s.name} />
-                                  <AvatarFallback className="bg-primary/5 text-primary text-[8px] font-bold">{s.name?.charAt(0)}</AvatarFallback>
-                                </Avatar>
-                                <div className="flex flex-col">
-                                  <span className="font-bold text-xs text-primary uppercase leading-none mb-1">{s.name?.split(' ')[0]}</span>
-                                  <span className="text-[9px] font-mono font-bold text-muted-foreground uppercase">{s.id}</span>
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell><span className="text-[10px] font-bold uppercase">{s.class}</span></TableCell>
-                            <TableCell className="text-center font-black text-primary">{s.annualAvg?.toFixed(2)}</TableCell>
-                            <TableCell className="text-right pr-8">
-                              <Badge className={cn("text-[8px] font-black uppercase px-2 h-5 border-none", isPassed ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>
-                                {isPassed ? 'PROMOTE' : 'REPEATER'}
-                              </Badge>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </TabsContent>
       </Tabs>
 
-      {/* ADMISSION DIALOG */}
       <Dialog open={isAdmissionOpen} onOpenChange={setIsAdmissionOpen}>
-        <DialogContent className="sm:max-w-3xl rounded-[2rem] sm:rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
-          <DialogHeader className="bg-primary p-5 sm:p-8 text-white relative shrink-0">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white/10 rounded-xl"><UserPlus className="w-8 h-8 text-secondary" /></div>
-              <DialogTitle className="text-2xl font-black uppercase">New Student Admission</DialogTitle>
-            </div>
-            <Button variant="ghost" size="icon" onClick={() => setIsAdmissionOpen(false)} className="absolute top-4 right-4 text-white hover:bg-white/10"><X className="w-6 h-6" /></Button>
+        <DialogContent className="max-h-[85vh] overflow-y-auto rounded-[2rem] border-none p-0 shadow-2xl sm:max-w-4xl">
+          <DialogHeader className="bg-primary p-8 text-white">
+            <DialogTitle className="text-2xl font-black uppercase">Register Student</DialogTitle>
+            <DialogDescription className="text-white/70">
+              Complete the school admission form and optionally create the parent activation account immediately.
+            </DialogDescription>
           </DialogHeader>
-          <div className="p-5 sm:p-8 space-y-8 max-h-[70vh] overflow-y-auto bg-white">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest ml-1">Identity Name</Label>
-                <Input value={newStudent.name} onChange={(e) => setNewStudent({...newStudent, name: e.target.value})} placeholder="e.g. John Smith" className="h-12 bg-accent/30 border-none rounded-xl font-bold" />
+          <div className="space-y-8 p-8">
+            <section className="space-y-4">
+              <h3 className="text-sm font-black uppercase tracking-widest text-primary">Learner Identity</h3>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2"><Label>Full Name</Label><Input value={formData.name} onChange={(event) => handleChange("name", event.target.value)} /></div>
+                <div className="space-y-2"><Label>Email</Label><Input type="email" value={formData.email} onChange={(event) => handleChange("email", event.target.value)} /></div>
+                <div className="space-y-2"><Label>Phone</Label><Input value={formData.phone || ""} onChange={(event) => handleChange("phone", event.target.value)} /></div>
+                <div className="space-y-2"><Label>WhatsApp</Label><Input value={formData.whatsapp || ""} onChange={(event) => handleChange("whatsapp", event.target.value)} /></div>
+                <div className="space-y-2"><Label>Date of Birth</Label><Input type="date" value={formData.date_of_birth || ""} onChange={(event) => handleChange("date_of_birth", event.target.value)} /></div>
+                <div className="space-y-2">
+                  <Label>Gender</Label>
+                  <Select value={formData.gender} onValueChange={(value) => handleChange("gender", value as CreateStudentRequest["gender"])}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{GENDER_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest ml-1">Class Level</Label>
-                <Select value={newStudent.class} onValueChange={(v) => setNewStudent({...newStudent, class: v})}>
-                  <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl"><SelectValue /></SelectTrigger>
-                  <SelectContent>{CLASSES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                </Select>
+            </section>
+
+            <section className="space-y-4">
+              <h3 className="text-sm font-black uppercase tracking-widest text-primary">Admission Placement</h3>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2"><Label>Admission Number</Label><Input value={formData.admission_number} onChange={(event) => handleChange("admission_number", event.target.value)} /></div>
+                <div className="space-y-2"><Label>Admission Date</Label><Input type="date" value={formData.admission_date} onChange={(event) => handleChange("admission_date", event.target.value)} /></div>
+                <div className="space-y-2"><Label>Class Name</Label><Input placeholder="Form 5 Science" value={formData.student_class} onChange={(event) => handleChange("student_class", event.target.value)} /></div>
+                <div className="space-y-2">
+                  <Label>Class Level</Label>
+                  <Select value={formData.class_level} onValueChange={(value) => handleChange("class_level", value)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{CLASS_LEVEL_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Section</Label>
+                  <Select value={formData.section} onValueChange={(value) => handleChange("section", value)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{SECTION_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2"><Label>Initial Password</Label><Input type="password" placeholder="Optional. Leave empty for activation later." value={formData.password || ""} onChange={(event) => handleChange("password", event.target.value)} /></div>
               </div>
-            </div>
+            </section>
+
+            <section className="space-y-4">
+              <h3 className="text-sm font-black uppercase tracking-widest text-primary">Guardian Details</h3>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2"><Label>Guardian Name</Label><Input value={formData.guardian_name} onChange={(event) => handleChange("guardian_name", event.target.value)} /></div>
+                <div className="space-y-2"><Label>Guardian Phone</Label><Input value={formData.guardian_phone} onChange={(event) => handleChange("guardian_phone", event.target.value)} /></div>
+                <div className="space-y-2 md:col-span-2"><Label>Guardian WhatsApp</Label><Input value={formData.guardian_whatsapp || ""} onChange={(event) => handleChange("guardian_whatsapp", event.target.value)} /></div>
+              </div>
+            </section>
+
+            <section className="space-y-4">
+              <div className="flex items-center justify-between rounded-2xl border bg-accent/10 p-4">
+                <div>
+                  <p className="font-bold text-primary">Create parent account now</p>
+                  <p className="text-xs text-muted-foreground">Generate a linked parent login and activation matricule immediately.</p>
+                </div>
+                <Switch checked={!!formData.create_parent_account} onCheckedChange={(checked) => handleChange("create_parent_account", checked)} />
+              </div>
+
+              {formData.create_parent_account && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2"><Label>Parent Name</Label><Input value={formData.parent_name || ""} onChange={(event) => handleChange("parent_name", event.target.value)} /></div>
+                  <div className="space-y-2"><Label>Parent Email</Label><Input type="email" value={formData.parent_email || ""} onChange={(event) => handleChange("parent_email", event.target.value)} /></div>
+                  <div className="space-y-2"><Label>Parent Phone</Label><Input value={formData.parent_phone || ""} onChange={(event) => handleChange("parent_phone", event.target.value)} /></div>
+                  <div className="space-y-2"><Label>Parent WhatsApp</Label><Input value={formData.parent_whatsapp || ""} onChange={(event) => handleChange("parent_whatsapp", event.target.value)} /></div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Relationship</Label>
+                    <Select value={formData.parent_relationship || "guardian"} onValueChange={(value) => handleChange("parent_relationship", value)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{RELATIONSHIP_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+            </section>
           </div>
-          <DialogFooter className="bg-accent/20 p-5 sm:p-6 border-t border-accent">
-            <Button className="w-full h-14 rounded-2xl shadow-xl font-black uppercase text-[10px] gap-2 bg-primary text-white" onClick={handleFinalizeAdmission} disabled={isProcessing}>
-              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />} Finalize Admission
+          <DialogFooter className="border-t bg-accent/20 p-6">
+            <Button onClick={handleSubmitAdmission} disabled={createStudentMutation.isPending} className="h-14 w-full gap-3 rounded-2xl font-black uppercase tracking-widest text-xs">
+              {createStudentMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <UserPlus className="h-5 w-5" />}
+              Save Admission
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* EDIT DIALOG */}
-      <Dialog open={!!editingUser} onOpenChange={() => setEditingUser(null)}>
-        <DialogContent className="sm:max-w-md rounded-[2rem] p-0 overflow-hidden border-none shadow-2xl">
-          <DialogHeader className="bg-primary p-5 sm:p-8 text-white">
-            <DialogTitle>Edit Student Identity</DialogTitle>
+      <Dialog open={!!editingStudent} onOpenChange={(open) => !open && setEditingStudent(null)}>
+        <DialogContent className="rounded-[2rem] border-none p-0 shadow-2xl sm:max-w-2xl">
+          <DialogHeader className="bg-primary p-8 text-white">
+            <DialogTitle className="text-2xl font-black uppercase">Edit Student</DialogTitle>
+            <DialogDescription className="text-white/70">Keep the learner, guardian, and class details accurate across the school system.</DialogDescription>
           </DialogHeader>
-          <div className="p-5 sm:p-8 space-y-4">
-            <div className="space-y-2">
-              <Label>Full Name</Label>
-              <Input value={editingUser?.name} onChange={(e) => setEditingUser({...editingUser, name: e.target.value})} className="h-12 rounded-xl" />
-            </div>
+          <div className="grid gap-4 p-8 md:grid-cols-2">
+            <div className="space-y-2"><Label>Full Name</Label><Input value={(editData.name as string) || ""} onChange={(event) => setEditData((current) => ({ ...current, name: event.target.value }))} /></div>
+            <div className="space-y-2"><Label>Email</Label><Input type="email" value={(editData.email as string) || ""} onChange={(event) => setEditData((current) => ({ ...current, email: event.target.value }))} /></div>
+            <div className="space-y-2"><Label>Phone</Label><Input value={(editData.phone as string) || ""} onChange={(event) => setEditData((current) => ({ ...current, phone: event.target.value }))} /></div>
+            <div className="space-y-2"><Label>WhatsApp</Label><Input value={(editData.whatsapp as string) || ""} onChange={(event) => setEditData((current) => ({ ...current, whatsapp: event.target.value }))} /></div>
+            <div className="space-y-2"><Label>Class Name</Label><Input value={(editData.student_class as string) || ""} onChange={(event) => setEditData((current) => ({ ...current, student_class: event.target.value }))} /></div>
             <div className="space-y-2">
               <Label>Class Level</Label>
-              <Select value={editingUser?.class} onValueChange={(v) => setEditingUser({...editingUser, class: v})}>
-                <SelectTrigger className="h-12 rounded-xl"><SelectValue /></SelectTrigger>
-                <SelectContent>{CLASSES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+              <Select value={(editData.class_level as string) || "form1"} onValueChange={(value) => setEditData((current) => ({ ...current, class_level: value }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{CLASS_LEVEL_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label>Section</Label>
+              <Select value={(editData.section as string) || "general"} onValueChange={(value) => setEditData((current) => ({ ...current, section: value }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{SECTION_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2"><Label>Date of Birth</Label><Input type="date" value={(editData.date_of_birth as string) || ""} onChange={(event) => setEditData((current) => ({ ...current, date_of_birth: event.target.value }))} /></div>
+            <div className="space-y-2">
+              <Label>Gender</Label>
+              <Select value={(editData.gender as string) || "male"} onValueChange={(value) => setEditData((current) => ({ ...current, gender: value as any }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{GENDER_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2"><Label>Guardian Name</Label><Input value={(editData.guardian_name as string) || ""} onChange={(event) => setEditData((current) => ({ ...current, guardian_name: event.target.value }))} /></div>
+            <div className="space-y-2"><Label>Guardian Phone</Label><Input value={(editData.guardian_phone as string) || ""} onChange={(event) => setEditData((current) => ({ ...current, guardian_phone: event.target.value }))} /></div>
+            <div className="space-y-2 md:col-span-2"><Label>Guardian WhatsApp</Label><Input value={(editData.guardian_whatsapp as string) || ""} onChange={(event) => setEditData((current) => ({ ...current, guardian_whatsapp: event.target.value }))} /></div>
           </div>
-          <DialogFooter className="p-6 bg-accent/10 border-t">
-            <Button onClick={handleSaveEdit} className="w-full h-12 rounded-xl font-bold" disabled={isProcessing}>
-              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Identity Changes"}
+          <DialogFooter className="border-t bg-accent/20 p-6">
+            <Button onClick={handleSaveEdit} disabled={updateStudentMutation.isPending} className="h-14 w-full gap-3 rounded-2xl font-black uppercase tracking-widest text-xs">
+              {updateStudentMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
+              Save Changes
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!createdResult} onOpenChange={() => setCreatedResult(null)}>
+        <DialogContent className="rounded-[2rem] border-none p-8 shadow-2xl sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-black uppercase text-primary">Admission Complete</DialogTitle>
+            <DialogDescription>Share these matricules so the new accounts can activate and log in.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Card className="border border-primary/10 shadow-none">
+              <CardContent className="p-5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Student Matricule</p>
+                <p className="mt-2 text-3xl font-black text-primary">{createdResult?.student_matricule || "Pending"}</p>
+              </CardContent>
+            </Card>
+            {createdResult?.parent_matricule && (
+              <Card className="border border-primary/10 shadow-none">
+                <CardContent className="p-5">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Parent Matricule</p>
+                  <p className="mt-2 text-3xl font-black text-primary">{createdResult.parent_matricule}</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

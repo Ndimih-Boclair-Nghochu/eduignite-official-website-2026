@@ -2,11 +2,13 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.filters import SearchFilter, OrderingFilter
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Count
 from django.db import transaction
 from django.utils import timezone
 from django.conf import settings as django_settings
+from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema
 from datetime import timedelta
 import logging
@@ -63,6 +65,11 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     permission_classes = [IsAuthenticated]
     lookup_field = 'id'
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['role', 'school', 'is_active', 'is_license_paid']
+    search_fields = ['name', 'email', 'matricule']
+    ordering_fields = ['date_joined', 'name', 'role', 'email']
+    ordering = ['-date_joined']
 
     def get_serializer_class(self):
         """Return appropriate serializer based on action."""
@@ -97,7 +104,7 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         """Set permissions based on action."""
         if self.action == 'create':
-            permission_classes = [IsExecutive]
+            permission_classes = [IsExecutiveOrSchoolAdmin]
         elif self.action in ['update', 'partial_update', 'destroy', 'update_role', 'toggle_license']:
             permission_classes = [IsOwnerOrExecutive]
         elif self.action in ['executives', 'by_school']:
@@ -109,6 +116,21 @@ class UserViewSet(viewsets.ModelViewSet):
         else:
             permission_classes = [IsAuthenticated]
         return [permission() for permission in permission_classes]
+
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
+
+        role_param = self.request.query_params.get('role')
+        if role_param and ',' in role_param:
+            roles = [role.strip() for role in role_param.split(',') if role.strip()]
+            if roles:
+                queryset = queryset.filter(role__in=roles)
+
+        school_id = self.request.query_params.get('school_id')
+        if school_id:
+            queryset = queryset.filter(school__id=school_id)
+
+        return queryset
 
     @extend_schema(
         description='List all users with role-based filtering',
@@ -132,8 +154,11 @@ class UserViewSet(viewsets.ModelViewSet):
         tags=['Users'],
     )
     def create(self, request, *args, **kwargs):
-        """Create new user (executives only)."""
-        return super().create(request, *args, **kwargs)
+        """Create new user within allowed role and school scope."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response(UserDetailSerializer(user).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(
         description='Update user (own profile or executive)',
