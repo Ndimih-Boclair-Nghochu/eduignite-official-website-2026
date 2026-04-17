@@ -71,6 +71,28 @@ class StudentViewSet(viewsets.ModelViewSet):
         response_data['parent_matricule'] = getattr(primary_parent_link.parent, 'matricule', None) if primary_parent_link else None
         return Response(response_data, status=status.HTTP_201_CREATED)
 
+    def _flatten_error_messages(self, errors, prefix=""):
+        messages = []
+
+        if isinstance(errors, dict):
+            for field, value in errors.items():
+                field_prefix = f"{prefix}.{field}" if prefix else str(field)
+                messages.extend(self._flatten_error_messages(value, field_prefix))
+            return messages
+
+        if isinstance(errors, list):
+            for value in errors:
+                if isinstance(value, (dict, list)):
+                    messages.extend(self._flatten_error_messages(value, prefix))
+                else:
+                    label = prefix.replace("_", " ").strip() if prefix else "error"
+                    messages.append(f"{label}: {value}")
+            return messages
+
+        label = prefix.replace("_", " ").strip() if prefix else "error"
+        messages.append(f"{label}: {errors}")
+        return messages
+
     def update(self, request, *args, **kwargs):
         if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
             raise PermissionDenied("Only school administrators can update students.")
@@ -245,11 +267,19 @@ class StudentViewSet(viewsets.ModelViewSet):
                     'admission_number': student.admission_number,
                 })
             else:
+                readable_errors = self._flatten_error_messages(serializer.errors)
                 failed_rows.append({
                     'row': index,
                     'name': row_payload['name'],
+                    'reason': " | ".join(readable_errors) if readable_errors else "This row failed validation.",
                     'errors': serializer.errors,
                 })
+
+        detail_message = (
+            f"{len(created_students)} students created. {len(failed_rows)} rows failed."
+            if failed_rows
+            else f"{len(created_students)} students created successfully."
+        )
 
         return Response(
             {
@@ -257,6 +287,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                 'failed_count': len(failed_rows),
                 'created_students': created_students,
                 'failed_rows': failed_rows,
+                'detail': detail_message,
             },
             status=status.HTTP_201_CREATED if created_students else status.HTTP_400_BAD_REQUEST,
         )

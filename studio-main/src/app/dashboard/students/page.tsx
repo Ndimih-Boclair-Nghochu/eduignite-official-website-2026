@@ -93,6 +93,24 @@ type AdmissionResult = {
   parent_matricule?: string | null;
 };
 
+type BulkUploadResult = {
+  created_count?: number;
+  failed_count?: number;
+  detail?: string;
+  created_students?: Array<{
+    id: string;
+    name: string;
+    matricule: string;
+    admission_number: string;
+  }>;
+  failed_rows?: Array<{
+    row: number;
+    name?: string;
+    reason?: string;
+    errors?: unknown;
+  }>;
+};
+
 function studentInitials(student: Student) {
   const name = student.user?.name || "Student";
   return name
@@ -114,7 +132,7 @@ export default function StudentsPage() {
   const [editData, setEditData] = useState<UpdateStudentRequest>({});
   const [isBulkOpen, setIsBulkOpen] = useState(false);
   const [bulkFile, setBulkFile] = useState<File | null>(null);
-  const [bulkResult, setBulkResult] = useState<any>(null);
+  const [bulkResult, setBulkResult] = useState<BulkUploadResult | null>(null);
   const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
   const [bulkData, setBulkData] = useState<BulkStudentUploadRequest>({
     file: new File([], "students.csv"),
@@ -200,6 +218,10 @@ export default function StudentsPage() {
         school: user?.school?.id,
       });
 
+      if ((created as any)?.id) {
+        await downloadAdmissionForm((created as any).id, (created as any)?.user?.name || formData.name || "student");
+      }
+
       setCreatedResult({
         ...(created as any),
         student_matricule: (created as any)?.student_matricule,
@@ -278,13 +300,18 @@ export default function StudentsPage() {
       setBulkResult(result);
       toast({
         title: "Bulk registration complete",
-        description: `${result.created_count || 0} students were registered for ${bulkData.student_class}.`,
+        description: result.detail || `${result.created_count || 0} students were registered for ${bulkData.student_class}.`,
       });
     } catch (error: any) {
+      const responseData = error?.response?.data as BulkUploadResult | undefined;
+      setBulkResult(responseData || null);
       toast({
         variant: "destructive",
         title: "Bulk upload failed",
-        description: error?.response?.data?.detail || "We could not process the uploaded class list.",
+        description:
+          responseData?.detail ||
+          responseData?.failed_rows?.[0]?.reason ||
+          "We could not process the uploaded class list.",
       });
     } finally {
       setIsBulkSubmitting(false);
@@ -662,7 +689,9 @@ export default function StudentsPage() {
               <Card className="border border-primary/10 shadow-none">
                 <CardHeader>
                   <CardTitle className="text-base font-black text-primary">Bulk Upload Result</CardTitle>
-                  <CardDescription>{bulkResult.created_count} created, {bulkResult.failed_count} failed.</CardDescription>
+                  <CardDescription>
+                    {bulkResult.detail || `${bulkResult.created_count} created, ${bulkResult.failed_count} failed.`}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {(bulkResult.created_students || []).slice(0, 10).map((student: any) => (
@@ -671,11 +700,19 @@ export default function StudentsPage() {
                         <p className="font-bold text-primary">{student.name}</p>
                         <p className="text-xs text-muted-foreground">{student.matricule} · {student.admission_number}</p>
                       </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-xl border-primary/10 font-bold text-primary"
+                        onClick={() => downloadAdmissionForm(student.id, student.name || "student")}
+                      >
+                        Download Form
+                      </Button>
                     </div>
                   ))}
                   {(bulkResult.failed_rows || []).slice(0, 10).map((row: any) => (
                     <div key={`failed-${row.row}`} className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-                      Row {row.row}: {JSON.stringify(row.errors)}
+                      Row {row.row}{row.name ? ` (${row.name})` : ""}: {row.reason || "This row failed validation."}
                     </div>
                   ))}
                 </CardContent>
