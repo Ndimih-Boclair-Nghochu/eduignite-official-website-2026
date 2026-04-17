@@ -1,3 +1,4 @@
+from datetime import date
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 import uuid as _uuid
@@ -93,13 +94,19 @@ class StudentDetailSerializer(serializers.ModelSerializer):
 
 
 class StudentCreateSerializer(serializers.ModelSerializer):
-    email = serializers.EmailField(required=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
     name = serializers.CharField(max_length=255, required=False, allow_blank=True)
     first_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
     last_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
     phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
     whatsapp = serializers.CharField(max_length=20, required=False, allow_blank=True)
     password = serializers.CharField(write_only=True, min_length=8, required=False, allow_blank=True)
+    gender = serializers.ChoiceField(choices=Student.GENDER_CHOICES, required=False, default='other')
+    guardian_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    guardian_phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    guardian_whatsapp = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    admission_number = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    admission_date = serializers.DateField(required=False)
     parent_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
     parent_email = serializers.EmailField(required=False, allow_blank=True)
     parent_phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
@@ -141,12 +148,12 @@ class StudentCreateSerializer(serializers.ModelSerializer):
         ]
 
     def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
+        if value and User.objects.filter(email=value).exists():
             raise serializers.ValidationError("A user with this email already exists.")
         return value
 
     def validate_admission_number(self, value):
-        if Student.objects.filter(admission_number=value).exists():
+        if value and Student.objects.filter(admission_number=value).exists():
             raise serializers.ValidationError("A student with this admission number already exists.")
         return value
 
@@ -171,6 +178,11 @@ class StudentCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     'parent_email': 'Parent name and email are required when creating a parent account.',
                 })
+            existing_parent = User.objects.filter(email=attrs.get('parent_email', '').strip()).first()
+            if existing_parent and existing_parent.role != 'PARENT':
+                raise serializers.ValidationError({'parent_email': 'This email belongs to a non-parent account.'})
+            if existing_parent and attrs.get('school') and existing_parent.school_id != attrs['school'].id:
+                raise serializers.ValidationError({'parent_email': 'Parent account belongs to a different school.'})
 
         return attrs
 
@@ -186,8 +198,21 @@ class StudentCreateSerializer(serializers.ModelSerializer):
             if not User.objects.filter(matricule=matricule).exists():
                 return matricule
 
+    def _generate_placeholder_email(self, matricule):
+        email = f"{matricule.lower()}@students.eduignite.local"
+        while User.objects.filter(email=email).exists():
+            email = f"{matricule.lower()}.{_uuid.uuid4().hex[:4]}@students.eduignite.local"
+        return email
+
+    def _generate_admission_number(self, school):
+        school_prefix = ''.join(ch for ch in (getattr(school, 'short_name', '') or school.id or 'SCH') if ch.isalnum()).upper()[:6] or 'SCH'
+        while True:
+            admission_number = f"{school_prefix}-{_uuid.uuid4().hex[:6].upper()}"
+            if not Student.objects.filter(admission_number=admission_number).exists():
+                return admission_number
+
     def create(self, validated_data):
-        email = validated_data.pop('email')
+        email = (validated_data.pop('email', '') or '').strip()
         name = validated_data.pop('name')
         validated_data.pop('first_name', None)
         validated_data.pop('last_name', None)
@@ -200,15 +225,29 @@ class StudentCreateSerializer(serializers.ModelSerializer):
         parent_whatsapp = validated_data.pop('parent_whatsapp', '').strip()
         parent_relationship = validated_data.pop('parent_relationship', 'guardian')
         create_parent_account = validated_data.pop('create_parent_account', False)
+        school = validated_data['school']
+        matricule = self._generate_matricule()
+
+        if not email:
+            email = self._generate_placeholder_email(matricule)
+
+        if not validated_data.get('admission_number'):
+            validated_data['admission_number'] = self._generate_admission_number(school)
+        if not validated_data.get('admission_date'):
+            validated_data['admission_date'] = date.today()
+        validated_data['guardian_name'] = validated_data.get('guardian_name', '').strip()
+        validated_data['guardian_phone'] = validated_data.get('guardian_phone', '').strip()
+        validated_data['guardian_whatsapp'] = validated_data.get('guardian_whatsapp', '').strip()
+        validated_data['gender'] = validated_data.get('gender') or 'other'
 
         user = User.objects.create_user(
-            matricule=self._generate_matricule(),
+            matricule=matricule,
             name=name,
             email=email,
             role='STUDENT',
             phone=phone or None,
             whatsapp=whatsapp or None,
-            school=validated_data['school'],
+            school=school,
             password=password or '!pending_activation',
         )
 
@@ -219,6 +258,8 @@ class StudentCreateSerializer(serializers.ModelSerializer):
             parent = User.objects.filter(email=parent_email).first()
             if parent and parent.role != 'PARENT':
                 raise serializers.ValidationError({'parent_email': 'This email belongs to a non-parent account.'})
+            if parent and parent.school_id != student.school_id:
+                raise serializers.ValidationError({'parent_email': 'Parent account belongs to a different school.'})
 
             if not parent:
                 parent = User.objects.create_user(

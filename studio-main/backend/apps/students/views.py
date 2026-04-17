@@ -1,3 +1,8 @@
+import csv
+from io import StringIO
+
+from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -150,6 +155,111 @@ class StudentViewSet(viewsets.ModelViewSet):
             'qr_code': student.qr_code if student.qr_code else None
         }
         return Response(data)
+
+    @action(detail=True, methods=['get'])
+    def admission_form(self, request, pk=None):
+        """Download a simple admission document for the student."""
+        student = self.get_object()
+        school = student.school
+        user = student.user
+        document = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Admission Form - {user.name}</title></head>
+<body style="font-family:Arial,sans-serif;padding:32px;color:#111;">
+  <h1 style="margin:0 0 8px;">{school.name}</h1>
+  <p style="margin:0 0 24px;">Student Admission Record</p>
+  <table style="border-collapse:collapse;width:100%;max-width:720px;">
+    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Student Name</strong></td><td style="padding:8px;border:1px solid #ddd;">{user.name}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Matricule</strong></td><td style="padding:8px;border:1px solid #ddd;">{user.matricule}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Admission Number</strong></td><td style="padding:8px;border:1px solid #ddd;">{student.admission_number}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Class</strong></td><td style="padding:8px;border:1px solid #ddd;">{student.student_class}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Class Level</strong></td><td style="padding:8px;border:1px solid #ddd;">{student.get_class_level_display()}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Section</strong></td><td style="padding:8px;border:1px solid #ddd;">{student.get_section_display()}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Email</strong></td><td style="padding:8px;border:1px solid #ddd;">{user.email}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Guardian Name</strong></td><td style="padding:8px;border:1px solid #ddd;">{student.guardian_name or '-'}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Guardian Phone</strong></td><td style="padding:8px;border:1px solid #ddd;">{student.guardian_phone or '-'}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Admission Date</strong></td><td style="padding:8px;border:1px solid #ddd;">{student.admission_date}</td></tr>
+  </table>
+  <p style="margin-top:24px;">This student can activate the account with the matricule above and complete the remaining personal information after first login.</p>
+</body>
+</html>"""
+        response = HttpResponse(document, content_type='text/html')
+        response['Content-Disposition'] = f'attachment; filename="admission_{user.matricule}.html"'
+        return response
+
+    @action(detail=False, methods=['post'])
+    def bulk_upload(self, request):
+        """Bulk create students from a CSV class list."""
+        if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
+            raise PermissionDenied("Only school administrators can bulk register students.")
+
+        upload = request.FILES.get('file')
+        if not upload:
+            return Response({'detail': 'CSV file is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            decoded = upload.read().decode('utf-8-sig')
+        except UnicodeDecodeError:
+            return Response({'detail': 'Unable to read the uploaded file. Use UTF-8 CSV.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        reader = csv.DictReader(StringIO(decoded))
+        created_students = []
+        failed_rows = []
+
+        base_payload = {
+            'student_class': request.data.get('student_class', ''),
+            'class_level': request.data.get('class_level', ''),
+            'section': request.data.get('section', 'general'),
+            'admission_date': request.data.get('admission_date') or timezone.now().date(),
+            'guardian_name': request.data.get('guardian_name', ''),
+            'guardian_phone': request.data.get('guardian_phone', ''),
+            'guardian_whatsapp': request.data.get('guardian_whatsapp', ''),
+        }
+
+        if not base_payload['student_class'] or not base_payload['class_level']:
+            return Response(
+                {'detail': 'student_class and class_level are required for bulk upload.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        for index, row in enumerate(reader, start=2):
+            row_payload = {
+                **base_payload,
+                'name': (row.get('name') or row.get('student_name') or '').strip(),
+                'email': (row.get('email') or '').strip(),
+                'phone': (row.get('phone') or '').strip(),
+                'whatsapp': (row.get('whatsapp') or '').strip(),
+                'admission_number': (row.get('admission_number') or '').strip(),
+                'guardian_name': (row.get('guardian_name') or base_payload['guardian_name'] or '').strip(),
+                'guardian_phone': (row.get('guardian_phone') or base_payload['guardian_phone'] or '').strip(),
+                'guardian_whatsapp': (row.get('guardian_whatsapp') or base_payload['guardian_whatsapp'] or '').strip(),
+            }
+
+            serializer = StudentCreateSerializer(data=row_payload, context=self.get_serializer_context())
+            if serializer.is_valid():
+                student = serializer.save()
+                created_students.append({
+                    'id': str(student.id),
+                    'name': student.user.name,
+                    'matricule': student.user.matricule,
+                    'admission_number': student.admission_number,
+                })
+            else:
+                failed_rows.append({
+                    'row': index,
+                    'name': row_payload['name'],
+                    'errors': serializer.errors,
+                })
+
+        return Response(
+            {
+                'created_count': len(created_students),
+                'failed_count': len(failed_rows),
+                'created_students': created_students,
+                'failed_rows': failed_rows,
+            },
+            status=status.HTTP_201_CREATED if created_students else status.HTTP_400_BAD_REQUEST,
+        )
 
     @action(detail=False, methods=['get'])
     def class_list(self, request):

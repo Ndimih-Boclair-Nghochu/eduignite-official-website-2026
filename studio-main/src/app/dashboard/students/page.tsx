@@ -26,8 +26,9 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Plus, Search, Sparkles, UserPlus, Users } from "lucide-react";
-import type { CreateStudentRequest, Student, UpdateStudentRequest } from "@/lib/api/types";
+import { Loader2, Plus, Search, Sparkles, Upload, UserPlus, Users } from "lucide-react";
+import type { BulkStudentUploadRequest, CreateStudentRequest, Student, UpdateStudentRequest } from "@/lib/api/types";
+import { studentsService } from "@/lib/api/services/students.service";
 
 const CLASS_LEVEL_OPTIONS = [
   { value: "form1", label: "Form 1" },
@@ -84,6 +85,10 @@ const emptyForm: CreateStudentRequest = {
 };
 
 type AdmissionResult = {
+  id?: string;
+  user?: {
+    name?: string;
+  };
   student_matricule?: string;
   parent_matricule?: string | null;
 };
@@ -107,6 +112,20 @@ export default function StudentsPage() {
   const [formData, setFormData] = useState<CreateStudentRequest>(emptyForm);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [editData, setEditData] = useState<UpdateStudentRequest>({});
+  const [isBulkOpen, setIsBulkOpen] = useState(false);
+  const [bulkFile, setBulkFile] = useState<File | null>(null);
+  const [bulkResult, setBulkResult] = useState<any>(null);
+  const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
+  const [bulkData, setBulkData] = useState<BulkStudentUploadRequest>({
+    file: new File([], "students.csv"),
+    student_class: "",
+    class_level: "form1",
+    section: "general",
+    admission_date: "",
+    guardian_name: "",
+    guardian_phone: "",
+    guardian_whatsapp: "",
+  });
 
   const studentsQuery = useStudents({
     search: searchTerm || undefined,
@@ -153,7 +172,7 @@ export default function StudentsPage() {
   const resetAdmissionForm = () => {
     setFormData({
       ...emptyForm,
-      admission_date: new Date().toISOString().slice(0, 10),
+      admission_date: "",
     });
   };
 
@@ -165,17 +184,12 @@ export default function StudentsPage() {
   const handleSubmitAdmission = async () => {
     if (
       !formData.name.trim() ||
-      !formData.email.trim() ||
-      !formData.student_class.trim() ||
-      !formData.guardian_name.trim() ||
-      !formData.guardian_phone.trim() ||
-      !formData.admission_number.trim() ||
-      !formData.admission_date
+      !formData.student_class.trim()
     ) {
       toast({
         variant: "destructive",
         title: "Incomplete registration",
-        description: "Complete the learner, guardian, class, and admission details before submitting.",
+        description: "Student name and class are the minimum required details for first admission.",
       });
       return;
     }
@@ -187,6 +201,7 @@ export default function StudentsPage() {
       });
 
       setCreatedResult({
+        ...(created as any),
         student_matricule: (created as any)?.student_matricule,
         parent_matricule: (created as any)?.parent_matricule,
       });
@@ -208,6 +223,71 @@ export default function StudentsPage() {
         title: "Registration failed",
         description: firstError,
       });
+    }
+  };
+
+  const downloadAdmissionForm = async (studentId: string, studentName: string) => {
+    try {
+      const blob = await studentsService.downloadAdmissionForm(studentId);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${studentName.replace(/\s+/g, "_").toLowerCase()}_admission.html`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Download failed",
+        description: "We could not generate the admission document right now.",
+      });
+    }
+  };
+
+  const downloadBulkTemplate = () => {
+    const csv = "name,email,phone,guardian_name,guardian_phone,admission_number\nJane Doe,jane@example.com,+237600000000,Parent Doe,+237611111111,\nJohn Smith,,,,,\n";
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "student_bulk_template.csv";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleBulkUpload = async () => {
+    if (!bulkFile || !bulkData.student_class.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Bulk upload incomplete",
+        description: "Choose a CSV file and provide the target class before uploading.",
+      });
+      return;
+    }
+
+    setIsBulkSubmitting(true);
+    try {
+      const result = await studentsService.bulkUploadStudents({
+        ...bulkData,
+        file: bulkFile,
+      });
+      setBulkResult(result);
+      toast({
+        title: "Bulk registration complete",
+        description: `${result.created_count || 0} students were registered for ${bulkData.student_class}.`,
+      });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Bulk upload failed",
+        description: error?.response?.data?.detail || "We could not process the uploaded class list.",
+      });
+    } finally {
+      setIsBulkSubmitting(false);
     }
   };
 
@@ -251,10 +331,20 @@ export default function StudentsPage() {
             Register learners, link guardians and parents, and keep a clean school-wide registry.
           </p>
         </div>
-        <Button className="h-14 gap-2 rounded-2xl px-8 font-black uppercase tracking-widest text-xs shadow-xl" onClick={openAdmissionDialog}>
-          <Plus className="h-5 w-5" />
-          Register Student
-        </Button>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Button variant="outline" className="h-14 gap-2 rounded-2xl px-6 font-black uppercase tracking-widest text-xs" onClick={downloadBulkTemplate}>
+            <Upload className="h-5 w-5" />
+            Download CSV Template
+          </Button>
+          <Button variant="outline" className="h-14 gap-2 rounded-2xl px-6 font-black uppercase tracking-widest text-xs" onClick={() => setIsBulkOpen(true)}>
+            <Upload className="h-5 w-5" />
+            Bulk Register
+          </Button>
+          <Button className="h-14 gap-2 rounded-2xl px-8 font-black uppercase tracking-widest text-xs shadow-xl" onClick={openAdmissionDialog}>
+            <Plus className="h-5 w-5" />
+            Register Student
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -376,6 +466,9 @@ export default function StudentsPage() {
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-3">
+                      <Button variant="outline" className="rounded-xl border-primary/10 font-bold text-primary" onClick={() => downloadAdmissionForm(student.id, student.user?.name || "student")}>
+                        Download Admission Form
+                      </Button>
                       <Button variant="outline" className="rounded-xl border-primary/10 font-bold text-primary" onClick={() => setEditingStudent(student)}>
                         Edit Learner
                       </Button>
@@ -435,7 +528,7 @@ export default function StudentsPage() {
               <h3 className="text-sm font-black uppercase tracking-widest text-primary">Learner Identity</h3>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2"><Label>Full Name</Label><Input value={formData.name} onChange={(event) => handleChange("name", event.target.value)} /></div>
-                <div className="space-y-2"><Label>Email</Label><Input type="email" value={formData.email} onChange={(event) => handleChange("email", event.target.value)} /></div>
+                <div className="space-y-2"><Label>Email (optional)</Label><Input type="email" value={formData.email || ""} onChange={(event) => handleChange("email", event.target.value)} placeholder="Leave blank to auto-generate a temporary student email" /></div>
                 <div className="space-y-2"><Label>Phone</Label><Input value={formData.phone || ""} onChange={(event) => handleChange("phone", event.target.value)} /></div>
                 <div className="space-y-2"><Label>WhatsApp</Label><Input value={formData.whatsapp || ""} onChange={(event) => handleChange("whatsapp", event.target.value)} /></div>
                 <div className="space-y-2"><Label>Date of Birth</Label><Input type="date" value={formData.date_of_birth || ""} onChange={(event) => handleChange("date_of_birth", event.target.value)} /></div>
@@ -452,8 +545,8 @@ export default function StudentsPage() {
             <section className="space-y-4">
               <h3 className="text-sm font-black uppercase tracking-widest text-primary">Admission Placement</h3>
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2"><Label>Admission Number</Label><Input value={formData.admission_number} onChange={(event) => handleChange("admission_number", event.target.value)} /></div>
-                <div className="space-y-2"><Label>Admission Date</Label><Input type="date" value={formData.admission_date} onChange={(event) => handleChange("admission_date", event.target.value)} /></div>
+                <div className="space-y-2"><Label>Admission Number (optional)</Label><Input value={formData.admission_number || ""} onChange={(event) => handleChange("admission_number", event.target.value)} placeholder="Leave blank to auto-generate" /></div>
+                <div className="space-y-2"><Label>Admission Date (optional)</Label><Input type="date" value={formData.admission_date || ""} onChange={(event) => handleChange("admission_date", event.target.value)} /></div>
                 <div className="space-y-2"><Label>Class Name</Label><Input placeholder="Form 5 Science" value={formData.student_class} onChange={(event) => handleChange("student_class", event.target.value)} /></div>
                 <div className="space-y-2">
                   <Label>Class Level</Label>
@@ -476,9 +569,9 @@ export default function StudentsPage() {
             <section className="space-y-4">
               <h3 className="text-sm font-black uppercase tracking-widest text-primary">Guardian Details</h3>
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2"><Label>Guardian Name</Label><Input value={formData.guardian_name} onChange={(event) => handleChange("guardian_name", event.target.value)} /></div>
-                <div className="space-y-2"><Label>Guardian Phone</Label><Input value={formData.guardian_phone} onChange={(event) => handleChange("guardian_phone", event.target.value)} /></div>
-                <div className="space-y-2 md:col-span-2"><Label>Guardian WhatsApp</Label><Input value={formData.guardian_whatsapp || ""} onChange={(event) => handleChange("guardian_whatsapp", event.target.value)} /></div>
+                <div className="space-y-2"><Label>Guardian Name (optional)</Label><Input value={formData.guardian_name || ""} onChange={(event) => handleChange("guardian_name", event.target.value)} /></div>
+                <div className="space-y-2"><Label>Guardian Phone (optional)</Label><Input value={formData.guardian_phone || ""} onChange={(event) => handleChange("guardian_phone", event.target.value)} /></div>
+                <div className="space-y-2 md:col-span-2"><Label>Guardian WhatsApp (optional)</Label><Input value={formData.guardian_whatsapp || ""} onChange={(event) => handleChange("guardian_whatsapp", event.target.value)} /></div>
               </div>
             </section>
 
@@ -512,6 +605,87 @@ export default function StudentsPage() {
             <Button onClick={handleSubmitAdmission} disabled={createStudentMutation.isPending} className="h-14 w-full gap-3 rounded-2xl font-black uppercase tracking-widest text-xs">
               {createStudentMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <UserPlus className="h-5 w-5" />}
               Save Admission
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isBulkOpen} onOpenChange={setIsBulkOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto rounded-[2rem] border-none p-0 shadow-2xl sm:max-w-3xl">
+          <DialogHeader className="bg-primary p-8 text-white">
+            <DialogTitle className="text-2xl font-black uppercase">Bulk Register Students</DialogTitle>
+            <DialogDescription className="text-white/70">
+              Upload a CSV class list with student names. The system will generate matricules and temporary accounts automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 p-8">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Target Class</Label>
+                <Input value={bulkData.student_class} onChange={(event) => setBulkData((current) => ({ ...current, student_class: event.target.value }))} placeholder="Form 1 A" />
+              </div>
+              <div className="space-y-2">
+                <Label>Class Level</Label>
+                <Select value={bulkData.class_level} onValueChange={(value) => setBulkData((current) => ({ ...current, class_level: value }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{CLASS_LEVEL_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Section</Label>
+                <Select value={bulkData.section} onValueChange={(value) => setBulkData((current) => ({ ...current, section: value }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{SECTION_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Admission Date (optional)</Label>
+                <Input type="date" value={bulkData.admission_date || ""} onChange={(event) => setBulkData((current) => ({ ...current, admission_date: event.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Default Guardian Name (optional)</Label>
+                <Input value={bulkData.guardian_name || ""} onChange={(event) => setBulkData((current) => ({ ...current, guardian_name: event.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Default Guardian Phone (optional)</Label>
+                <Input value={bulkData.guardian_phone || ""} onChange={(event) => setBulkData((current) => ({ ...current, guardian_phone: event.target.value }))} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>CSV File</Label>
+              <Input type="file" accept=".csv,text/csv" onChange={(event) => setBulkFile(event.target.files?.[0] || null)} />
+              <p className="text-xs text-muted-foreground">Supported columns: `name`, `email`, `phone`, `guardian_name`, `guardian_phone`, `admission_number`.</p>
+            </div>
+
+            {bulkResult && (
+              <Card className="border border-primary/10 shadow-none">
+                <CardHeader>
+                  <CardTitle className="text-base font-black text-primary">Bulk Upload Result</CardTitle>
+                  <CardDescription>{bulkResult.created_count} created, {bulkResult.failed_count} failed.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {(bulkResult.created_students || []).slice(0, 10).map((student: any) => (
+                    <div key={student.id} className="flex items-center justify-between rounded-xl border p-3">
+                      <div>
+                        <p className="font-bold text-primary">{student.name}</p>
+                        <p className="text-xs text-muted-foreground">{student.matricule} · {student.admission_number}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {(bulkResult.failed_rows || []).slice(0, 10).map((row: any) => (
+                    <div key={`failed-${row.row}`} className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+                      Row {row.row}: {JSON.stringify(row.errors)}
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+          </div>
+          <DialogFooter className="border-t bg-accent/20 p-6">
+            <Button onClick={handleBulkUpload} disabled={isBulkSubmitting} className="h-14 w-full gap-3 rounded-2xl font-black uppercase tracking-widest text-xs">
+              {isBulkSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
+              Upload and Register
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -575,6 +749,11 @@ export default function StudentsPage() {
               <CardContent className="p-5">
                 <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Student Matricule</p>
                 <p className="mt-2 text-3xl font-black text-primary">{createdResult?.student_matricule || "Pending"}</p>
+                {createdResult?.id && (
+                  <Button variant="outline" className="mt-4 rounded-xl border-primary/10 font-bold text-primary" onClick={() => downloadAdmissionForm(createdResult.id, createdResult?.user?.name || "student")}>
+                    Download Admission Form
+                  </Button>
+                )}
               </CardContent>
             </Card>
             {createdResult?.parent_matricule && (

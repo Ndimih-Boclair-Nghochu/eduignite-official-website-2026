@@ -5,6 +5,7 @@ import {
   PaginatedResponse,
   ListParams,
   CreateStudentRequest,
+  BulkStudentUploadRequest,
 } from '../types';
 
 export const studentsService = {
@@ -20,6 +21,22 @@ export const studentsService = {
 
   async createStudent(studentData: CreateStudentRequest): Promise<Student> {
     const { data } = await apiClient.post(API.STUDENTS.BASE, studentData);
+    return data;
+  },
+
+  async bulkUploadStudents(payload: BulkStudentUploadRequest): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', payload.file);
+    formData.append('student_class', payload.student_class);
+    formData.append('class_level', payload.class_level);
+    formData.append('section', payload.section);
+    if (payload.admission_date) formData.append('admission_date', payload.admission_date);
+    if (payload.guardian_name) formData.append('guardian_name', payload.guardian_name);
+    if (payload.guardian_phone) formData.append('guardian_phone', payload.guardian_phone);
+    if (payload.guardian_whatsapp) formData.append('guardian_whatsapp', payload.guardian_whatsapp);
+    const { data } = await apiClient.post(API.STUDENTS.BULK_UPLOAD, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
     return data;
   },
 
@@ -60,6 +77,13 @@ export const studentsService = {
 
   async getStudentCard(id: string): Promise<any> {
     const { data } = await apiClient.get(API.STUDENTS.STUDENT_CARD(id));
+    return data;
+  },
+
+  async downloadAdmissionForm(id: string): Promise<Blob> {
+    const { data } = await apiClient.get(API.STUDENTS.ADMISSION_FORM(id), {
+      responseType: 'blob',
+    });
     return data;
   },
 };

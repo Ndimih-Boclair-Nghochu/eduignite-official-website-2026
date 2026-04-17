@@ -61,11 +61,13 @@ export const API = {
   STUDENTS: {
     BASE: '/students/students/',
     HONOUR_ROLL: '/students/students/honour_roll/',
+    BULK_UPLOAD: '/students/students/bulk_upload/',
     MY_CHILDREN: '/students/students/my_children/',
     CLASS_LIST: (cls: string) => `/students/students/class_list/?class_name=${encodeURIComponent(cls)}`,
     DETAIL: (id: string) => `/students/students/${id}/`,
     LINK_PARENT: (id: string) => `/students/students/${id}/link_parent/`,
     STUDENT_CARD: (id: string) => `/students/students/${id}/student_card/`,
+    ADMISSION_FORM: (id: string) => `/students/students/${id}/admission_form/`,
   },
   GRADES: {
     SUBJECTS: '/grades/subjects/',

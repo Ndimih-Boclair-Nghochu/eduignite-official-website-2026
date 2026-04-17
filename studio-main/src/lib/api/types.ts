@@ -825,7 +825,7 @@ export type UpdateSchoolSettingsRequest = Partial<SchoolSettings>;
 
 export interface CreateStudentRequest {
   name: string;
-  email: string;
+  email?: string;
   phone?: string;
   whatsapp?: string;
   password?: string;
@@ -835,11 +835,11 @@ export interface CreateStudentRequest {
   section: string;
   date_of_birth?: string;
   gender: "male" | "female" | "other";
-  guardian_name: string;
-  guardian_phone: string;
+  guardian_name?: string;
+  guardian_phone?: string;
   guardian_whatsapp?: string;
-  admission_number: string;
-  admission_date: string;
+  admission_number?: string;
+  admission_date?: string;
   parent_name?: string;
   parent_email?: string;
   parent_phone?: string;
@@ -849,6 +849,17 @@ export interface CreateStudentRequest {
 }
 
 export type UpdateStudentRequest = Partial<CreateStudentRequest>;
+
+export interface BulkStudentUploadRequest {
+  file: File;
+  student_class: string;
+  class_level: string;
+  section: string;
+  admission_date?: string;
+  guardian_name?: string;
+  guardian_phone?: string;
+  guardian_whatsapp?: string;
+}
 
 export interface LinkParentRequest {
   parentId: string;
