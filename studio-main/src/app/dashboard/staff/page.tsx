@@ -189,7 +189,7 @@ export default function StaffPage() {
 
   // Fetch staff list
   const { data: staffList = [] } = useUsers({
-    role: "TEACHER,BURSAR,LIBRARIAN,SUB_ADMIN",
+    role: "SCHOOL_ADMIN,SUB_ADMIN,TEACHER,BURSAR,LIBRARIAN,PARENT",
   });
   const { data: schoolOptions = [] } = useSchools();
 

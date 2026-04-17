@@ -40,6 +40,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
+import { getLicenseAccessState } from "@/lib/license";
 
 const ROLE_FEES: Record<string, string> = {
   STUDENT: "5000",
@@ -70,17 +71,23 @@ export default function SubscriptionPage() {
 
   // Use live platform fees if available, otherwise fall back to static ROLE_FEES
   const liveFees: Record<string, string> = {};
-  if (platformFeesData?.results) {
-    platformFeesData.results.forEach((fee: any) => {
+  const feeRows = (platformFeesData as any)?.results ?? [];
+  if (feeRows.length) {
+    feeRows.forEach((fee: any) => {
       // Map fee names to roles, e.g. "Student License" → "STUDENT"
-      const roleKey = fee.name?.toUpperCase().replace(/\s+LICENSE/, '').replace(/\s/g, '_');
-      if (roleKey) liveFees[roleKey] = fee.amount;
+      if (fee?.role) liveFees[fee.role] = String(fee.amount ?? "0");
     });
   }
-  const mergedFees = Object.keys(liveFees).length > 0 ? liveFees : ROLE_FEES;
-  const userFee = mergedFees[user?.role || "STUDENT"] || "5000";
+  const mergedFees = {
+    ...ROLE_FEES,
+    ...(platformSettings.fees || {}),
+    ...liveFees,
+  };
+  const userFee = mergedFees[user?.role || "STUDENT"] || "0";
   const deadline = platformSettings.paymentDeadline;
-  const paymentStatus = user?.isLicensePaid ? 'paid' : 'pending';
+  const licenseState = getLicenseAccessState(user as any, { ...platformSettings, fees: mergedFees } as any);
+  const paymentStatus =
+    licenseState.feeAmount <= 0 ? "waived" : licenseState.isPaid ? "paid" : licenseState.beforeDeadline ? "pending" : "overdue";
 
   const handlePaySubscription = () => {
     if (!paymentData.number) {
@@ -158,19 +165,19 @@ export default function SubscriptionPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          {paymentStatus === 'paid' && (
+          {(paymentStatus === 'paid' || paymentStatus === 'waived') && (
             <Button variant="outline" className="h-10 rounded-xl font-bold gap-2 border-primary/20" onClick={handleGenerateReceipt}>
               <Printer className="w-4 h-4" /> {language === 'en' ? 'Receipt' : 'Reçu'}
             </Button>
           )}
           <Badge 
-            variant={paymentStatus === 'paid' ? 'secondary' : 'outline'} 
+            variant={paymentStatus === 'paid' || paymentStatus === 'waived' ? 'secondary' : 'outline'} 
             className={cn(
               "h-10 px-6 rounded-xl font-black uppercase tracking-widest",
-              paymentStatus === 'paid' ? "bg-green-100 text-green-700 border-none" : "border-primary/20 text-primary"
+              paymentStatus === 'paid' || paymentStatus === 'waived' ? "bg-green-100 text-green-700 border-none" : "border-primary/20 text-primary"
             )}
           >
-            {paymentStatus === 'paid' ? t("paid") : t("unpaid")}
+            {paymentStatus === 'waived' ? "No Fee" : paymentStatus === 'paid' ? t("paid") : paymentStatus === 'pending' ? "Pending" : "Overdue"}
           </Badge>
         </div>
       </div>
@@ -191,7 +198,7 @@ export default function SubscriptionPage() {
                 </div>
                 <div className="text-right hidden sm:block">
                   <p className="text-[10px] font-black uppercase text-white/40 tracking-widest">Valid Until</p>
-                  <p className="text-lg font-bold">Oct 2024</p>
+                  <p className="text-lg font-bold">{deadline || "Not set"}</p>
                 </div>
               </div>
             </CardHeader>
@@ -212,13 +219,33 @@ export default function SubscriptionPage() {
                 </div>
               </div>
 
-              {paymentStatus === 'pending' ? (
+              {paymentStatus === 'overdue' ? (
                 <div className="p-6 bg-amber-50 rounded-2xl border border-amber-100 flex gap-4">
                   <AlertCircle className="w-6 h-6 text-amber-600 shrink-0" />
                   <div className="space-y-1">
                     <p className="font-bold text-amber-900 leading-none">Action Required</p>
                     <p className="text-xs text-amber-800 leading-relaxed">
-                      Your annual license fee is outstanding. Please clear the balance before the **{deadline}** deadline to avoid automated dashboard locking.
+                      Your annual license fee is outstanding. Please clear the balance because the configured deadline has passed.
+                    </p>
+                  </div>
+                </div>
+              ) : paymentStatus === 'pending' ? (
+                <div className="p-6 bg-blue-50 rounded-2xl border border-blue-100 flex gap-4">
+                  <Clock className="w-6 h-6 text-blue-600 shrink-0" />
+                  <div className="space-y-1">
+                    <p className="font-bold text-blue-900 leading-none">Deadline Not Reached</p>
+                    <p className="text-xs text-blue-800 leading-relaxed">
+                      Access remains open until {deadline || "the founder-configured deadline"}, even though the annual fee is not yet paid.
+                    </p>
+                  </div>
+                </div>
+              ) : paymentStatus === 'waived' ? (
+                <div className="p-6 bg-green-50 rounded-2xl border border-green-100 flex gap-4 animate-in zoom-in-95 duration-500">
+                  <CheckCircle2 className="w-6 h-6 text-green-600 shrink-0" />
+                  <div className="space-y-1">
+                    <p className="font-bold text-green-900 leading-none">No Restriction Applied</p>
+                    <p className="text-xs text-green-800 leading-relaxed">
+                      The annual license amount for your role is 0 XAF, so the dashboard stays open without payment.
                     </p>
                   </div>
                 </div>
@@ -239,14 +266,14 @@ export default function SubscriptionPage() {
                   <h4 className="text-xs font-black uppercase text-primary tracking-widest flex items-center gap-2">
                     <History className="w-4 h-4" /> Transaction History
                   </h4>
-                  {paymentStatus === 'paid' && (
+                  {(paymentStatus === 'paid' || paymentStatus === 'waived') && (
                     <Button variant="link" className="h-auto p-0 text-[10px] font-black uppercase text-secondary" onClick={handleGenerateReceipt}>
                       Download Receipt <ArrowRight className="w-3 h-3 ml-1" />
                     </Button>
                   )}
                 </div>
                 <div className="space-y-2">
-                  {paymentStatus === 'paid' ? (
+                  {paymentStatus === 'paid' || paymentStatus === 'waived' ? (
                     <div className="flex items-center justify-between p-4 rounded-xl bg-accent/30 border border-accent">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-white rounded-lg shadow-sm">
@@ -271,7 +298,7 @@ export default function SubscriptionPage() {
         <div className="lg:col-span-5 space-y-8">
           <Card className={cn(
             "border-none shadow-2xl overflow-hidden rounded-[2rem] transition-all duration-500",
-            paymentStatus === 'paid' ? "opacity-50 grayscale pointer-events-none" : ""
+            paymentStatus === 'paid' || paymentStatus === 'waived' ? "opacity-50 grayscale pointer-events-none" : ""
           )}>
             <CardHeader className="bg-accent/50 border-b p-8">
               <div className="flex items-center gap-4">
@@ -331,7 +358,7 @@ export default function SubscriptionPage() {
               <Button 
                 className="w-full h-16 rounded-2xl shadow-xl font-black uppercase tracking-widest text-xs gap-3" 
                 onClick={handlePaySubscription}
-                disabled={isProcessing || paymentStatus === 'paid'}
+                disabled={isProcessing || paymentStatus === 'paid' || paymentStatus === 'waived'}
               >
                 {isProcessing ? <Loader2 className="w-6 h-6 animate-spin" /> : <Send className="w-6 h-6" />}
                 Process Payment

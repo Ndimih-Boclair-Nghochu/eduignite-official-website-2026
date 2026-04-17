@@ -10,9 +10,11 @@ import { AreaChart, Area, ResponsiveContainer } from "recharts";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { DATA_PERIODS } from "./dashboard-mock-data";
+import { getLicenseAccessState } from "@/lib/license";
 
 export function DefaultDashboard() {
-  const { user } = useAuth();
+  const { user, platformSettings } = useAuth();
+  const licenseState = getLicenseAccessState(user as any, platformSettings as any);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -43,7 +45,7 @@ export function DefaultDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: "Role Registry", value: user?.role?.replace('_', ' ') || "", icon: ShieldCheck, color: "text-blue-600" },
-          { label: "License Status", value: user?.isLicensePaid ? "Active" : "Locked", icon: Wallet, color: "text-green-600" },
+          { label: "License Status", value: licenseState.statusLabel, icon: Wallet, color: "text-green-600" },
           { label: "Matricule", value: user?.id || "", icon: GraduationCap, color: "text-purple-600" },
           { label: "AI Requests", value: user?.aiRequestCount || 0, icon: Activity, color: "text-amber-600" },
         ].map((stat, i) => (

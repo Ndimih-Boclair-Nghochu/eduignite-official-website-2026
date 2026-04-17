@@ -47,6 +47,7 @@ const FEE_ROLES = [
   { role: "BURSAR", label: "Financial Node", icon: Wallet },
   { role: "LIBRARIAN", label: "Library Node", icon: BookOpen },
   { role: "SCHOOL_ADMIN", label: "Primary Admin", icon: Building2 },
+  { role: "SUB_ADMIN", label: "Sub Admin", icon: Building2 },
 ] as const;
 
 const TRAINING_ROLES = ["STUDENT", "TEACHER", "PARENT", "SCHOOL_ADMIN", "SUB_ADMIN", "BURSAR", "LIBRARIAN"] as const;

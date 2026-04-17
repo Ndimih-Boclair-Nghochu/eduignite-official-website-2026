@@ -43,6 +43,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { resolveMediaUrl } from "@/lib/media";
+import { getLicenseAccessState } from "@/lib/license";
 
 const EXECUTIVE_ROLES: UserRole[] = ["SUPER_ADMIN", "CEO", "CTO", "COO", "INV", "DESIGNER"];
 
@@ -150,11 +151,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!user) return null;
 
   const isPlatformExecutive = EXECUTIVE_ROLES.includes(user.role as UserRole);
-  const isLicensePaid = user.isLicensePaid;
+  const licenseState = getLicenseAccessState(user, platformSettings as any);
   const isSubscriptionPage = pathname === "/dashboard/subscription";
   const schoolLogo = resolveMediaUrl(user?.school?.logo);
 
-  if (!isLicensePaid && !isPlatformExecutive && !isSubscriptionPage) {
+  if (licenseState.restrictionApplies && !isPlatformExecutive && !isSubscriptionPage) {
     return (
       <div className="flex min-h-dvh flex-col md:flex-row bg-background">
         <aside className="hidden md:flex w-64 shrink-0 h-full">
@@ -173,12 +174,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </CardHeader>
             <CardContent className="p-6 sm:p-8 text-center space-y-6">
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Your account dashboard has been locked because the annual institutional license fee for the current academic session is outstanding. 
+                Your account dashboard is locked because the founder-configured annual license fee for your role is still unpaid and the payment deadline has passed.
               </p>
               <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 flex gap-3 text-left">
                 <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <p className="text-[11px] text-amber-800 font-medium">
-                  Administrative actions (Grades, Finance, Library) are suspended until the license is activated.
+                  Amount due: {licenseState.feeAmount.toLocaleString()} XAF.
+                  {licenseState.deadline ? ` Deadline: ${licenseState.deadline.toLocaleDateString()}.` : ""}
                 </p>
               </div>
               <Button asChild className="w-full h-14 rounded-2xl shadow-lg font-black uppercase tracking-widest text-xs gap-2">
