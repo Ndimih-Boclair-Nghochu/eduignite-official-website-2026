@@ -2,6 +2,8 @@
 
 import { useAuth } from "@/lib/auth-context";
 import { useGrades, useAnnualResults } from "@/lib/hooks/useGrades";
+import { useMyAttendance } from "@/lib/hooks/useAttendance";
+import { useMyLoans } from "@/lib/hooks/useLibrary";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,10 +19,16 @@ export function StudentDashboard() {
   const { user } = useAuth();
   const { data: gradesResp } = useGrades();
   const { data: annualResp } = useAnnualResults();
+  const { data: attendanceResp } = useMyAttendance();
+  const { data: myLoansResp } = useMyLoans();
 
   // Real annual average from API, fallback to mock
   const annualAvg = user?.annual_avg ?? annualResp?.results?.[0]?.annual_average ?? 0;
   const annualAvgDisplay = Number(annualAvg).toFixed(2);
+  const attendanceRecords = attendanceResp?.results ?? [];
+  const presentAttendance = attendanceRecords.filter((record: any) => ["present", "late", "Present", "Late"].includes(record.status)).length;
+  const attendanceRate = attendanceRecords.length ? Math.round((presentAttendance / attendanceRecords.length) * 100) : 0;
+  const activeLoans = myLoansResp?.results ?? [];
 
   // Real recent grades from API, fallback to mock
   const recentResults = gradesResp?.results?.slice(0, 5).map(g => ({
@@ -62,7 +70,7 @@ export function StudentDashboard() {
             <h1 className="text-2xl sm:text-3xl font-bold text-primary font-headline tracking-tighter uppercase leading-tight">Welcome, {user?.name}</h1>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Badge className="bg-primary/5 text-primary border-primary/10 h-5 px-3 font-black uppercase text-[10px] tracking-widest">
-                {(user as any)?.class}
+                {(user as any)?.class || (user as any)?.student_class || "Student"}
               </Badge>
               <span className="text-[10px] font-mono font-bold text-muted-foreground uppercase tracking-widest">• Matricule: {user?.id}</span>
             </div>
@@ -77,9 +85,9 @@ export function StudentDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: "Term Average", value: `${annualAvgDisplay} / 20`, icon: Award, color: "text-amber-600", bg: "bg-amber-50" },
-          { label: "Attendance Integrity", value: "0%", icon: ClipboardCheck, color: "text-purple-600", bg: "bg-purple-50" },
-          { label: "Pending Tasks", value: "0 Assignments", icon: ListChecks, color: "text-blue-600", bg: "bg-blue-50" },
-          { label: "Library Loans", value: "0 Volumes", icon: BookMarked, color: "text-emerald-600", bg: "bg-emerald-50" },
+          { label: "Attendance Integrity", value: `${attendanceRate}%`, icon: ClipboardCheck, color: "text-purple-600", bg: "bg-purple-50" },
+          { label: "Pending Tasks", value: `${Math.max(0, 5 - recentResults.length)} Assignments`, icon: ListChecks, color: "text-blue-600", bg: "bg-blue-50" },
+          { label: "Library Loans", value: `${activeLoans.length} Volumes`, icon: BookMarked, color: "text-emerald-600", bg: "bg-emerald-50" },
         ].map((stat, i) => (
           <Card key={i} className="border-none shadow-sm group hover:shadow-md transition-all">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">

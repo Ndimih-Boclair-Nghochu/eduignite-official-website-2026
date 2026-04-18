@@ -465,14 +465,14 @@ export default function StaffPage() {
       </Tabs>
 
       <Dialog open={isCreateStaffDialogOpen} onOpenChange={setIsCreateStaffDialogOpen}>
-        <DialogContent className="sm:max-w-xl rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
+        <DialogContent className="sm:max-w-xl rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl flex max-h-[90vh] flex-col">
           <DialogHeader className="bg-primary p-8 text-white">
             <DialogTitle className="text-2xl font-black uppercase tracking-tighter">Create Staff Account</DialogTitle>
             <DialogDescription className="text-white/70">
               Provision a school-level account and generate a matricule for activation.
             </DialogDescription>
           </DialogHeader>
-          <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto">
+          <div className="flex-1 overflow-y-auto p-8 space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Full Name</Label>
@@ -509,16 +509,24 @@ export default function StaffPage() {
               </div>
               <div className="space-y-2">
                 <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">School</Label>
-                <Select value={newStaff.school} onValueChange={(value) => setNewStaff({ ...newStaff, school: value })} disabled={isAdmin}>
-                  <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl font-bold">
-                    <SelectValue placeholder="Select school" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(isAdmin ? schoolOptions.filter((school: any) => school.id === user?.school?.id) : schoolOptions).map((school: any) => (
-                      <SelectItem key={school.id} value={school.id}>{school.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {isAdmin ? (
+                  <Input
+                    value={schoolOptions.find((school: any) => school.id === (newStaff.school || user?.school?.id))?.name || user?.school?.name || "School linked automatically"}
+                    readOnly
+                    className="h-12 bg-accent/30 border-none rounded-xl font-bold"
+                  />
+                ) : (
+                  <Select value={newStaff.school} onValueChange={(value) => setNewStaff({ ...newStaff, school: value })}>
+                    <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl font-bold">
+                      <SelectValue placeholder="Select school" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {schoolOptions.map((school: any) => (
+                        <SelectItem key={school.id} value={school.id}>{school.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -538,8 +546,8 @@ export default function StaffPage() {
               <p>If password is omitted, the staff member can activate later using the matricule.</p>
             </div>
           </div>
-          <DialogFooter className="bg-accent/20 p-6 border-t border-accent">
-            <Button onClick={handleCreateStaff} className="w-full h-14 rounded-2xl shadow-lg font-black uppercase tracking-widest text-xs gap-3 bg-primary text-white hover:bg-primary/90" disabled={isProcessing}>
+          <DialogFooter className="sticky bottom-0 bg-accent/20 p-6 border-t border-accent">
+            <Button type="button" onClick={handleCreateStaff} className="w-full h-14 rounded-2xl shadow-lg font-black uppercase tracking-widest text-xs gap-3 bg-primary text-white hover:bg-primary/90" disabled={isProcessing}>
               {isProcessing ? <><Loader2 className="w-5 h-5 animate-spin" /><span>Creating...</span></> : <><ShieldCheck className="w-5 h-5 text-secondary" /><span>Create Staff & Generate Matricule</span></>}
             </Button>
           </DialogFooter>
