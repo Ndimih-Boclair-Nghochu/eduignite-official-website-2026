@@ -77,9 +77,37 @@ class AttendanceRecordViewSet(viewsets.ModelViewSet):
         if request.user.role != 'TEACHER':
             raise PermissionDenied("Only teachers can record attendance.")
 
-        serializer = BulkAttendanceSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        session, records = serializer.save()
+        student_class = request.data.get('student_class') or request.data.get('class_name')
+        date = request.data.get('date')
+        period = request.data.get('period', 'full_day')
+        subject_id = request.data.get('subject')
+        record_items = request.data.get('records', [])
+
+        if not student_class or not date or not record_items:
+            raise ValidationError("student_class, date, and records are required.")
+
+        session_data = {
+            'teacher': request.user,
+            'school': request.user.school,
+            'student_class': student_class,
+            'date': date,
+            'period': period,
+        }
+
+        if subject_id:
+            session_data['subject_id'] = subject_id
+
+        session = AttendanceSession.objects.create(**session_data)
+        records = []
+        for item in record_items:
+            records.append(
+                AttendanceRecord.objects.create(
+                    session=session,
+                    student_id=item.get('student'),
+                    status=item.get('status', 'present'),
+                    excuse_note=item.get('excuse_note', ''),
+                )
+            )
 
         return Response({
             'session': AttendanceSessionSerializer(session).data,
@@ -172,7 +200,7 @@ class AttendanceRecordViewSet(viewsets.ModelViewSet):
         if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN', 'TEACHER']:
             raise PermissionDenied("Only school staff can view class reports.")
 
-        sessions = AttendanceSession.objects.filter(student_class=class_name)
+        sessions = AttendanceSession.objects.filter(student_class=class_name, school=request.user.school)
 
         if start_date:
             sessions = sessions.filter(date__gte=start_date)
@@ -181,18 +209,29 @@ class AttendanceRecordViewSet(viewsets.ModelViewSet):
 
         records = AttendanceRecord.objects.filter(session__in=sessions).select_related('session', 'student')
 
-        data = []
+        summary = {}
         for record in records:
-            data.append({
-                'date': record.session.date,
-                'period': record.session.period,
-                'student_name': record.student.user.get_full_name(),
-                'admission_number': record.student.admission_number,
-                'status': record.status,
-            })
+            student_id = str(record.student.id)
+            if student_id not in summary:
+                summary[student_id] = {
+                    'id': student_id,
+                    'name': record.student.user.get_full_name(),
+                    'present': 0,
+                    'absent': 0,
+                    'late': 0,
+                    'excused': 0,
+                    'total': 0,
+                }
+            summary[student_id]['total'] += 1
+            summary[student_id][record.status] += 1
 
-        serializer = ClassAttendanceReportSerializer(data, many=True)
-        return Response(serializer.data)
+        data = []
+        for item in summary.values():
+            attendance_value = item['present'] + item['late']
+            item['percentage'] = round((attendance_value / item['total']) * 100, 2) if item['total'] else 0
+            data.append(item)
+
+        return Response(data)
 
     @action(detail=False, methods=['get'])
     def absent_students_today(self, request):
@@ -210,7 +249,9 @@ class AttendanceRecordViewSet(viewsets.ModelViewSet):
         data = []
         for record in absent_records:
             data.append({
-                'student_name': record.student.user.get_full_name(),
+                'id': str(record.student.id),
+                'name': record.student.user.get_full_name(),
+                'avatar': getattr(record.student.user, 'avatar', None),
                 'admission_number': record.student.admission_number,
                 'class': record.student.student_class,
                 'period': record.session.period,

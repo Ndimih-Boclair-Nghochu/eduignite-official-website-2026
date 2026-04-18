@@ -68,6 +68,8 @@ import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useRouter } from "next/navigation";
 import { Textarea } from "@/components/ui/textarea";
+import { libraryService } from "@/lib/api/services/library.service";
+import { studentsService } from "@/lib/api/services/students.service";
 
 export default function LibraryPage() {
   const { user } = useAuth();
@@ -85,6 +87,7 @@ export default function LibraryPage() {
   const [overdueLoans, setOverdueLoans] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
+  const [categoriesData, setCategoriesData] = useState<any[]>([]);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoadingBooks, setIsLoadingBooks] = useState(true);
@@ -117,10 +120,22 @@ export default function LibraryPage() {
     const loadBooks = async () => {
       try {
         setHasError(false);
-        const response = await fetch("/api/library/books");
-        if (!response.ok) throw new Error("Failed to load books");
-        const data = await response.json();
-        setBooks(data.books || []);
+        const [booksResponse, categoryResponse] = await Promise.all([
+          libraryService.getBooks({ limit: 200 }),
+          libraryService.getCategories({ limit: 100 }),
+        ]);
+        const bookList = Array.isArray(booksResponse) ? booksResponse : booksResponse?.results || [];
+        const categoryList = Array.isArray(categoryResponse) ? categoryResponse : categoryResponse?.results || [];
+        setCategoriesData(categoryList);
+        setBooks(
+          bookList.map((book: any) => ({
+            ...book,
+            category: book.category_name || book.category?.name || "Uncategorized",
+            cover: book.cover_image,
+            available: book.available_copies,
+            total: book.total_copies,
+          }))
+        );
       } catch (error) {
         console.error("Error loading books:", error);
         setHasError(true);
@@ -137,12 +152,18 @@ export default function LibraryPage() {
   useEffect(() => {
     const loadLoans = async () => {
       try {
-        const response = await fetch("/api/library/loans");
-        if (!response.ok) throw new Error("Failed to load loans");
-        const data = await response.json();
-        setLoans(data.loans || []);
-        setRequests(data.requests || []);
-        setOverdueLoans(data.overdue || []);
+        const [loanResponse, overdueResponse, studentsResponse] = await Promise.all([
+          libraryService.getLoans({ limit: 200 }),
+          libraryService.getOverdueLoans({ limit: 100 }),
+          studentsService.getStudents({ limit: 200 }),
+        ]);
+        const loanList = Array.isArray(loanResponse) ? loanResponse : loanResponse?.results || [];
+        const overdueList = Array.isArray(overdueResponse) ? overdueResponse : overdueResponse?.results || [];
+        const studentList = Array.isArray(studentsResponse) ? studentsResponse : studentsResponse?.results || [];
+        setStudents(studentList);
+        setLoans(loanList);
+        setRequests([]);
+        setOverdueLoans(overdueList);
       } catch (error) {
         console.error("Error loading loans:", error);
         toast({ title: "Error", description: "Failed to load loans", variant: "destructive" });
@@ -160,10 +181,8 @@ export default function LibraryPage() {
   useEffect(() => {
     const loadMyLoans = async () => {
       try {
-        const response = await fetch("/api/library/my-loans");
-        if (!response.ok) throw new Error("Failed to load your loans");
-        const data = await response.json();
-        setMyLoans(data.loans || []);
+        const data = await libraryService.getMyLoans({ limit: 100 });
+        setMyLoans(Array.isArray(data) ? data : data?.results || []);
       } catch (error) {
         console.error("Error loading my loans:", error);
         toast({ title: "Error", description: "Failed to load your loans", variant: "destructive" });
@@ -181,9 +200,7 @@ export default function LibraryPage() {
   useEffect(() => {
     const loadStats = async () => {
       try {
-        const response = await fetch("/api/library/stats");
-        if (!response.ok) throw new Error("Failed to load stats");
-        const data = await response.json();
+        const data = await libraryService.getLibraryStats();
         setStats(data);
       } catch (error) {
         console.error("Error loading stats:", error);
@@ -206,16 +223,19 @@ export default function LibraryPage() {
 
     setIsProcessing(true);
     try {
-      const response = await fetch("/api/library/books", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newBookData)
+      const matchedCategory = categoriesData.find(
+        (category) => category.name?.toLowerCase() === newBookData.category.toLowerCase()
+      );
+      const data = await libraryService.createBook({
+        title: newBookData.title,
+        author: newBookData.author,
+        category: matchedCategory?.id,
+        isbn: newBookData.isbn,
+        total_copies: newBookData.total,
+        available_copies: newBookData.total,
+        description: newBookData.description,
       });
-
-      if (!response.ok) throw new Error("Failed to add book");
-
-      const data = await response.json();
-      setBooks([data.book, ...books]);
+      setBooks([{ ...data, category: data.category_name || newBookData.category, available: data.available_copies, total: data.total_copies }, ...books]);
       setNewBookData({
         title: "",
         author: "",
@@ -240,21 +260,15 @@ export default function LibraryPage() {
 
     setIsProcessing(true);
     try {
-      const response = await fetch(`/api/library/loans`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bookId: selectedBookForLoan.id,
-          studentId: borrowerData.studentId,
-          duration: parseInt(borrowerData.duration)
-        })
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + parseInt(borrowerData.duration, 10));
+      const data = await libraryService.issueBook({
+        bookId: selectedBookForLoan.id,
+        borrowerId: borrowerData.studentId,
+        dueDate: dueDate.toISOString().split("T")[0],
       });
-
-      if (!response.ok) throw new Error("Failed to issue loan");
-
-      const data = await response.json();
-      setLoans([data.loan, ...loans]);
-      setIssuedReceipt(data.receipt);
+      setLoans([data, ...loans]);
+      setIssuedReceipt(data);
       setSelectedBookForLoan(null);
       setBorrowerData({ studentId: "", duration: "7" });
       toast({ title: "Success", description: "Loan issued" });
@@ -267,39 +281,16 @@ export default function LibraryPage() {
   };
 
   const handleStudentBorrowRequest = async (book: any) => {
-    if (!user) return;
-
-    setIsProcessing(true);
-    try {
-      const response = await fetch(`/api/library/borrow-request`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookId: book.id })
-      });
-
-      if (!response.ok) throw new Error("Failed to create request");
-
-      const data = await response.json();
-      setBorrowRequestTicket(data.ticket);
-      toast({ title: "Success", description: "Request submitted to librarian" });
-    } catch (error) {
-      console.error("Error creating request:", error);
-      toast({ title: "Error", description: "Failed to create request", variant: "destructive" });
-    } finally {
-      setIsProcessing(false);
-    }
+    toast({
+      title: "Ask the librarian",
+      description: "Student self-service requests are not enabled yet for this school. A librarian can issue this book from the management tab.",
+    });
   };
 
   const handleReturnBook = async (loan: any) => {
     setIsProcessing(true);
     try {
-      const response = await fetch(`/api/library/loans/${loan.id}/return`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" }
-      });
-
-      if (!response.ok) throw new Error("Failed to return book");
-
+      await libraryService.returnBook({ loanId: loan.id });
       setLoans((prev) => prev.filter((l) => l.id !== loan.id));
       setMyLoans((prev) => prev.filter((l) => l.id !== loan.id));
       toast({ title: "Success", description: "Book return recorded" });
@@ -353,25 +344,25 @@ export default function LibraryPage() {
           <Card className="border-none shadow-sm bg-white">
             <CardContent className="pt-6">
               <p className="text-xs text-muted-foreground font-bold">Total Books</p>
-              <p className="text-3xl font-black text-primary">{stats.totalBooks || 0}</p>
+              <p className="text-3xl font-black text-primary">{stats.total_books || stats.totalBooks || 0}</p>
             </CardContent>
           </Card>
           <Card className="border-none shadow-sm bg-white">
             <CardContent className="pt-6">
               <p className="text-xs text-muted-foreground font-bold">Available</p>
-              <p className="text-3xl font-black text-green-600">{stats.availableBooks || 0}</p>
+              <p className="text-3xl font-black text-green-600">{books.reduce((sum, book) => sum + (book.available || 0), 0)}</p>
             </CardContent>
           </Card>
           <Card className="border-none shadow-sm bg-white">
             <CardContent className="pt-6">
               <p className="text-xs text-muted-foreground font-bold">Active Loans</p>
-              <p className="text-3xl font-black text-blue-600">{stats.activeLoans || 0}</p>
+              <p className="text-3xl font-black text-blue-600">{loans.length}</p>
             </CardContent>
           </Card>
           <Card className="border-none shadow-sm bg-white">
             <CardContent className="pt-6">
               <p className="text-xs text-muted-foreground font-bold">Overdue</p>
-              <p className="text-3xl font-black text-destructive">{stats.overdueCount || 0}</p>
+              <p className="text-3xl font-black text-destructive">{stats.overdue_loans || stats.overdueCount || overdueLoans.length || 0}</p>
             </CardContent>
           </Card>
         </div>
@@ -577,10 +568,10 @@ export default function LibraryPage() {
                       <TableBody>
                         {loans.map((loan) => (
                           <TableRow key={loan.id}>
-                            <TableCell className="font-bold">{loan.borrowerName}</TableCell>
-                            <TableCell>{loan.bookTitle}</TableCell>
-                            <TableCell className="text-xs">{loan.borrowDate}</TableCell>
-                            <TableCell className="text-xs">{loan.returnDate}</TableCell>
+                            <TableCell className="font-bold">{loan.borrower_name || loan.borrower?.name}</TableCell>
+                            <TableCell>{loan.book_title || loan.book?.title}</TableCell>
+                            <TableCell className="text-xs">{loan.issued_date}</TableCell>
+                            <TableCell className="text-xs">{loan.due_date}</TableCell>
                             <TableCell>
                               <Button
                                 size="sm"
@@ -606,8 +597,8 @@ export default function LibraryPage() {
                     {overdueLoans.map((loan) => (
                       <Card key={loan.id} className="border border-destructive/20 bg-destructive/5">
                         <CardContent className="pt-4">
-                          <p className="font-bold">{loan.bookTitle}</p>
-                          <p className="text-xs text-destructive">Overdue since {loan.overdueDate}</p>
+                          <p className="font-bold">{loan.book_title || loan.book?.title}</p>
+                          <p className="text-xs text-destructive">Due since {loan.due_date}</p>
                         </CardContent>
                       </Card>
                     ))}
@@ -641,7 +632,11 @@ export default function LibraryPage() {
                           <SelectValue placeholder="Choose student..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {/* Students would be loaded from API */}
+                          {students.map((student) => (
+                            <SelectItem key={student.id} value={student.user?.id || student.id}>
+                              {student.user?.name || student.name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -667,15 +662,15 @@ export default function LibraryPage() {
                   <div className="space-y-3 py-4 border-t border-b">
                     <div>
                       <p className="text-xs text-muted-foreground">Book</p>
-                      <p className="font-bold">{issuedReceipt.bookTitle}</p>
+                      <p className="font-bold">{issuedReceipt.book_title || issuedReceipt.book?.title}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Student</p>
-                      <p className="font-bold">{issuedReceipt.borrowerName}</p>
+                      <p className="font-bold">{issuedReceipt.borrower_name || issuedReceipt.borrower?.name}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Return Date</p>
-                      <p className="font-bold">{issuedReceipt.returnDate}</p>
+                      <p className="font-bold">{issuedReceipt.due_date}</p>
                     </div>
                   </div>
                   <DialogFooter>
@@ -729,9 +724,9 @@ export default function LibraryPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {categories.map((c) => (
-                          <SelectItem key={c} value={c}>
-                            {c}
+                        {categoriesData.map((c) => (
+                          <SelectItem key={c.id} value={c.name}>
+                            {c.name}
                           </SelectItem>
                         ))}
                       </SelectContent>

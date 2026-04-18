@@ -47,6 +47,10 @@ export const attendanceService = {
       | string
       | {
           sessionId: string;
+          student_class?: string;
+          date?: string;
+          period?: string;
+          subject?: string;
           records: Array<{
             student: string;
             status: 'Present' | 'Absent' | 'Late' | 'Excused';
@@ -62,7 +66,14 @@ export const attendanceService = {
     const payload =
       typeof sessionIdOrPayload === 'string'
         ? { session: sessionIdOrPayload, records }
-        : { session: sessionIdOrPayload.sessionId, records: sessionIdOrPayload.records };
+        : {
+            session: sessionIdOrPayload.sessionId,
+            student_class: sessionIdOrPayload.student_class,
+            date: sessionIdOrPayload.date,
+            period: sessionIdOrPayload.period,
+            subject: sessionIdOrPayload.subject,
+            records: sessionIdOrPayload.records,
+          };
     const { data } = await apiClient.post(API.ATTENDANCE.BULK_RECORD, {
       ...payload,
     });

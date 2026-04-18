@@ -50,6 +50,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { gradesService } from "@/lib/api/services/grades.service";
+import { studentsService } from "@/lib/api/services/students.service";
 
 const CLASSES = ["6ème / Form 1", "5ème / Form 2", "4ème / Form 3", "3ème / Form 4", "2nde / Form 5", "1ère / Lower Sixth", "Terminale / Upper Sixth"];
 const ACADEMIC_YEARS = ["2023 / 2024", "2022 / 2023", "2021 / 2022"];
@@ -77,6 +79,7 @@ export default function GradeBookPage() {
   const [reportCard, setReportCard] = useState<any>(null);
   const [classResults, setClassResults] = useState<any[]>([]);
   const [annualResults, setAnnualResults] = useState<any[]>([]);
+  const [studentProfile, setStudentProfile] = useState<any>(null);
 
   const isTeacher = user?.role === "TEACHER";
   const isStudent = user?.role === "STUDENT";
@@ -86,12 +89,11 @@ export default function GradeBookPage() {
   useEffect(() => {
     const loadSubjects = async () => {
       try {
-        const response = await fetch("/api/grades/subjects");
-        if (!response.ok) throw new Error("Failed to load subjects");
-        const data = await response.json();
-        setSubjects(data.subjects || []);
-        if (data.subjects?.length > 0) {
-          setSelectedSubject(data.subjects[0].id);
+        const data = await gradesService.getSubjects({ limit: 200 });
+        const list = Array.isArray(data) ? data : data?.results || [];
+        setSubjects(list);
+        if (list.length > 0) {
+          setSelectedSubject(list[0].id);
         }
       } catch (error) {
         console.error("Error loading subjects:", error);
@@ -107,12 +109,11 @@ export default function GradeBookPage() {
   useEffect(() => {
     const loadSequences = async () => {
       try {
-        const response = await fetch("/api/grades/sequences");
-        if (!response.ok) throw new Error("Failed to load sequences");
-        const data = await response.json();
-        setSequences(data.sequences || []);
-        if (data.sequences?.length > 0) {
-          setSelectedSequence(data.sequences[0].id);
+        const data = await gradesService.getSequences({ limit: 50 });
+        const list = Array.isArray(data) ? data : data?.results || [];
+        setSequences(list);
+        if (list.length > 0) {
+          setSelectedSequence(list[0].id);
         }
       } catch (error) {
         console.error("Error loading sequences:", error);
@@ -123,15 +124,29 @@ export default function GradeBookPage() {
     loadSequences();
   }, [toast]);
 
+  useEffect(() => {
+    if (!isStudent) return;
+
+    const loadStudentProfile = async () => {
+      try {
+        const data = await studentsService.getStudents({ limit: 1 });
+        const list = Array.isArray(data) ? data : data?.results || [];
+        setStudentProfile(list[0] || null);
+      } catch (error) {
+        console.error("Error loading student profile:", error);
+      }
+    };
+
+    loadStudentProfile();
+  }, [isStudent]);
+
   // Load student's report card
   useEffect(() => {
-    if (!isStudent || !selectedSequence) return;
+    if (!isStudent || !selectedSequence || !studentProfile?.id) return;
 
     const loadReportCard = async () => {
       try {
-        const response = await fetch(`/api/grades/report-card/${user?.uid}/${selectedSequence}`);
-        if (!response.ok) throw new Error("Failed to load report card");
-        const data = await response.json();
+        const data = await gradesService.getReportCard(studentProfile.id, selectedSequence);
         setReportCard(data);
       } catch (error) {
         console.error("Error loading report card:", error);
@@ -140,7 +155,7 @@ export default function GradeBookPage() {
     };
 
     loadReportCard();
-  }, [isStudent, user?.uid, selectedSequence, toast]);
+  }, [isStudent, studentProfile?.id, selectedSequence, toast]);
 
   // Load class results for teacher
   useEffect(() => {
@@ -148,10 +163,8 @@ export default function GradeBookPage() {
 
     const loadClassResults = async () => {
       try {
-        const response = await fetch(`/api/grades/class-results/${selectedClass}/${selectedSequence}`);
-        if (!response.ok) throw new Error("Failed to load class results");
-        const data = await response.json();
-        setClassResults(data.results || []);
+        const data = await gradesService.getClassResults(selectedClass, selectedSequence);
+        setClassResults(Array.isArray(data) ? data : data?.results || []);
       } catch (error) {
         console.error("Error loading class results:", error);
         toast({ title: "Error", description: "Failed to load class results", variant: "destructive" });
@@ -168,10 +181,26 @@ export default function GradeBookPage() {
     const loadClasses = async () => {
       try {
         setIsLoading(true);
-        const response = await fetch("/api/classes");
-        if (!response.ok) throw new Error("Failed to load classes");
-        const data = await response.json();
-        setClasses(data.classes || []);
+        const data = await studentsService.getStudents({ limit: 500 });
+        const students = Array.isArray(data) ? data : data?.results || [];
+        const grouped = Object.values(
+          students.reduce((acc: Record<string, any>, student: any) => {
+            const className = student.student_class || "Unassigned";
+            if (!acc[className]) {
+              acc[className] = {
+                id: className,
+                name: className,
+                students: 0,
+                performance: 0,
+                averageMark: 0,
+                teachers: 0,
+              };
+            }
+            acc[className].students += 1;
+            return acc;
+          }, {})
+        );
+        setClasses(grouped);
       } catch (error) {
         console.error("Error loading classes:", error);
         setHasError(true);
@@ -331,7 +360,11 @@ export default function GradeBookPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <p className="text-xs text-muted-foreground font-bold">Average Mark</p>
-                    <p className="text-2xl font-black text-primary">{reportCard.averageMark?.toFixed(2) || "N/A"}</p>
+                    <p className="text-2xl font-black text-primary">
+                      {typeof (reportCard.averageMark ?? reportCard.average) === "number"
+                        ? (reportCard.averageMark ?? reportCard.average).toFixed(2)
+                        : "N/A"}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground font-bold">Class Rank</p>
@@ -339,13 +372,13 @@ export default function GradeBookPage() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground font-bold">Status</p>
-                    <Badge className={cn("mt-1", reportCard.status === "PASSED" ? "bg-green-600" : "bg-destructive")}>
-                      {reportCard.status || "N/A"}
+                    <Badge className={cn("mt-1", (reportCard.status || getSystemStatus(reportCard.average || 0)) === "PASSED" ? "bg-green-600" : "bg-destructive")}>
+                      {reportCard.status || getSystemStatus(reportCard.average || 0)}
                     </Badge>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground font-bold">Remark</p>
-                    <p className="text-sm font-bold text-primary">{reportCard.remark || "N/A"}</p>
+                    <p className="text-sm font-bold text-primary">{reportCard.remark || getSystemRemark(reportCard.average || 0)}</p>
                   </div>
                 </div>
               </CardContent>
@@ -370,13 +403,17 @@ export default function GradeBookPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {reportCard.subjects?.map((subject: any) => (
+                      {(reportCard.subjects || reportCard.grades || []).map((subject: any) => (
                         <TableRow key={subject.id}>
-                          <TableCell className="font-bold">{subject.name}</TableCell>
-                          <TableCell className="text-sm">{subject.teacherName}</TableCell>
-                          <TableCell className="font-bold">{subject.mark?.toFixed(2) || "N/A"}</TableCell>
-                          <TableCell>{subject.coefficient || "N/A"}</TableCell>
-                          <TableCell className="font-bold text-primary">{subject.total?.toFixed(2) || "N/A"}</TableCell>
+                          <TableCell className="font-bold">{subject.name || subject.subject_name || subject.subject?.name || "Subject"}</TableCell>
+                          <TableCell className="text-sm">{subject.teacherName || subject.teacher_name || "N/A"}</TableCell>
+                          <TableCell className="font-bold">
+                            {typeof (subject.mark ?? subject.score) === "number" ? (subject.mark ?? subject.score).toFixed(2) : "N/A"}
+                          </TableCell>
+                          <TableCell>{subject.coefficient || subject.subject?.coefficient || "N/A"}</TableCell>
+                          <TableCell className="font-bold text-primary">
+                            {typeof subject.total === "number" ? subject.total.toFixed(2) : "N/A"}
+                          </TableCell>
                           <TableCell className="text-sm">{subject.rank || "N/A"}</TableCell>
                         </TableRow>
                       ))}

@@ -87,7 +87,8 @@ export const libraryService = {
       typeof bookIdOrPayload === 'string'
         ? { bookId: bookIdOrPayload, borrowerId, dueDate }
         : bookIdOrPayload;
-    const { data } = await apiClient.post(API.LIBRARY.ISSUE(payload.bookId), {
+    const { data } = await apiClient.post(API.LIBRARY.ISSUE(), {
+      book: payload.bookId,
       borrower: payload.borrowerId,
       due_date: payload.dueDate,
     });

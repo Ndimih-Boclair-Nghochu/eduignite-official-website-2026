@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
+from django.db.models import Q
 from .models import BookCategory, Book, BookLoan
 from .serializers import (
     BookCategorySerializer, BookListSerializer, BookDetailSerializer,
@@ -27,7 +28,7 @@ class BookCategoryViewSet(viewsets.ModelViewSet):
 
     def check_permissions(self, request):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            if not (request.user.role in ['librarian', 'school_admin', 'executive']):
+            if request.user.role not in ['LIBRARIAN', 'SCHOOL_ADMIN', 'SUB_ADMIN', 'SUPER_ADMIN', 'CEO', 'CTO', 'COO']:
                 self.permission_denied(request)
         return super().check_permissions(request)
 
@@ -55,7 +56,7 @@ class BookViewSet(viewsets.ModelViewSet):
 
     def check_permissions(self, request):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            if not (request.user.role in ['librarian', 'school_admin', 'executive']):
+            if request.user.role not in ['LIBRARIAN', 'SCHOOL_ADMIN', 'SUB_ADMIN', 'SUPER_ADMIN', 'CEO', 'CTO', 'COO']:
                 self.permission_denied(request)
         return super().check_permissions(request)
 
@@ -69,9 +70,9 @@ class BookViewSet(viewsets.ModelViewSet):
 
         if query:
             books = books.filter(
-                models.Q(title__icontains=query) |
-                models.Q(author__icontains=query) |
-                models.Q(isbn__icontains=query)
+                Q(title__icontains=query) |
+                Q(author__icontains=query) |
+                Q(isbn__icontains=query)
             )
 
         if category_id:
@@ -119,10 +120,10 @@ class BookLoanViewSet(viewsets.ModelViewSet):
                 self.permission_denied(request)
         return super().check_permissions(request)
 
-    @action(detail=True, methods=['post'])
-    def issue(self, request, pk=None):
+    @action(detail=False, methods=['post'])
+    def issue(self, request):
         """Issue a book to a borrower"""
-        if request.user.role not in ['librarian', 'school_admin', 'executive']:
+        if request.user.role not in ['LIBRARIAN', 'SCHOOL_ADMIN', 'SUB_ADMIN', 'SUPER_ADMIN', 'CEO', 'CTO', 'COO']:
             return Response({'detail': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = IssueLoanSerializer(data=request.data)
@@ -134,7 +135,7 @@ class BookLoanViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def return_book(self, request, pk=None):
         """Mark a book loan as returned"""
-        if request.user.role not in ['librarian', 'school_admin', 'executive']:
+        if request.user.role not in ['LIBRARIAN', 'SCHOOL_ADMIN', 'SUB_ADMIN', 'SUPER_ADMIN', 'CEO', 'CTO', 'COO']:
             return Response({'detail': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
 
         loan = self.get_object()
@@ -154,7 +155,7 @@ class BookLoanViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def overdue(self, request):
         """Get all overdue loans"""
-        if request.user.role not in ['librarian', 'school_admin', 'executive']:
+        if request.user.role not in ['LIBRARIAN', 'SCHOOL_ADMIN', 'SUB_ADMIN', 'SUPER_ADMIN', 'CEO', 'CTO', 'COO']:
             return Response({'detail': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
 
         today = timezone.now().date()
@@ -170,7 +171,7 @@ class BookLoanViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def stats(self, request):
         """Get library statistics"""
-        if request.user.role not in ['librarian', 'school_admin', 'executive']:
+        if request.user.role not in ['LIBRARIAN', 'SCHOOL_ADMIN', 'SUB_ADMIN', 'SUPER_ADMIN', 'CEO', 'CTO', 'COO']:
             return Response({'detail': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
 
         today = timezone.now().date()

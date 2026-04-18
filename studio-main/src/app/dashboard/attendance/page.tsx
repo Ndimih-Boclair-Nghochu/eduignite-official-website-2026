@@ -49,6 +49,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { attendanceService } from "@/lib/api/services/attendance.service";
+import { studentsService } from "@/lib/api/services/students.service";
 
 const CLASSES = ["6ème / Form 1", "5ème / Form 2", "4ème / Form 3", "3ème / Form 4", "2nde / Form 5", "1ère / Lower Sixth", "Terminale / Upper Sixth"];
 
@@ -68,6 +70,8 @@ export default function AttendancePage() {
   const [absentToday, setAbsentToday] = useState<any[]>([]);
   const [classAttendanceReport, setClassAttendanceReport] = useState<any[]>([]);
   const [studentSummary, setStudentSummary] = useState<any>(null);
+  const [classStudents, setClassStudents] = useState<any[]>([]);
+  const [studentProfile, setStudentProfile] = useState<any>(null);
 
   const [selectedClass, setSelectedClass] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
@@ -86,37 +90,27 @@ export default function AttendancePage() {
         setHasError(false);
 
         if (isStudent) {
-          // Load student's own attendance
-          const response = await fetch("/api/attendance/my-attendance");
-          if (!response.ok) throw new Error("Failed to load attendance");
-          const data = await response.json();
-          setMyAttendance(data.records || []);
+          const studentResponse = await studentsService.getStudents({ limit: 1 });
+          const studentList = Array.isArray(studentResponse) ? studentResponse : studentResponse?.results || [];
+          const currentStudent = studentList[0] || null;
+          setStudentProfile(currentStudent);
 
-          // Load student's summary
-          const summaryResponse = await fetch("/api/attendance/summary");
-          if (summaryResponse.ok) {
-            const summaryData = await summaryResponse.json();
+          const attendanceData = await attendanceService.getMyAttendance({ limit: 200 });
+          setMyAttendance(Array.isArray(attendanceData) ? attendanceData : attendanceData?.results || []);
+
+          if (currentStudent?.id) {
+            const summaryData = await attendanceService.getStudentSummary(currentStudent.id);
             setStudentSummary(summaryData);
           }
         } else if (isTeacher) {
-          // Load sessions for teacher
-          const response = await fetch("/api/attendance/sessions");
-          if (!response.ok) throw new Error("Failed to load sessions");
-          const data = await response.json();
-          setAttendanceSessions(data.sessions || []);
+          const data = await attendanceService.getAttendanceSessions({ limit: 100 });
+          setAttendanceSessions(Array.isArray(data) ? data : data?.results || []);
         } else if (isAdmin) {
-          // Load full attendance report
-          const response = await fetch("/api/attendance/records");
-          if (!response.ok) throw new Error("Failed to load records");
-          const data = await response.json();
-          setAttendanceRecords(data.records || []);
+          const data = await attendanceService.getAttendanceRecords({ limit: 200 });
+          setAttendanceRecords(Array.isArray(data) ? data : data?.results || []);
 
-          // Load today's absent
-          const absentResponse = await fetch("/api/attendance/absent-today");
-          if (absentResponse.ok) {
-            const absentData = await absentResponse.json();
-            setAbsentToday(absentData.students || []);
-          }
+          const absentData = await attendanceService.getAbsentToday();
+          setAbsentToday(Array.isArray(absentData) ? absentData : absentData?.students || []);
         }
       } catch (error) {
         console.error("Error loading attendance:", error);
@@ -129,6 +123,25 @@ export default function AttendancePage() {
 
     loadAttendanceData();
   }, [isStudent, isTeacher, isAdmin, toast]);
+
+  useEffect(() => {
+    if (!selectedClass || (!isTeacher && !isAdmin)) {
+      setClassStudents([]);
+      return;
+    }
+
+    const loadClassStudents = async () => {
+      try {
+        const data = await studentsService.getClassList(selectedClass);
+        setClassStudents(Array.isArray(data) ? data : data?.results || []);
+      } catch (error) {
+        console.error("Error loading class students:", error);
+        setClassStudents([]);
+      }
+    };
+
+    loadClassStudents();
+  }, [selectedClass, isTeacher, isAdmin]);
 
   const handleRecordAttendance = async (studentId: string, status: string) => {
     setBulkAttendanceData((prev) => ({
@@ -145,19 +158,16 @@ export default function AttendancePage() {
 
     setIsProcessing(true);
     try {
-      const response = await fetch("/api/attendance/bulk-record", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          classId: selectedClass,
-          date: selectedDate,
-          records: bulkAttendanceData
-        })
-      });
-
-      if (!response.ok) throw new Error("Failed to record attendance");
-
-      const data = await response.json();
+      const data = await attendanceService.bulkRecordAttendance({
+        sessionId: "",
+        records: classStudents.map((student: any) => ({
+          student: student.id,
+          status: ((bulkAttendanceData[student.id] || "present").toLowerCase() as any),
+        })),
+        student_class: selectedClass,
+        date: selectedDate,
+        period: "full_day",
+      } as any);
       setAttendanceSessions([data.session, ...attendanceSessions]);
       setBulkAttendanceData({});
       toast({ title: "Success", description: "Attendance recorded successfully" });
@@ -177,20 +187,8 @@ export default function AttendancePage() {
 
     setIsProcessing(true);
     try {
-      const response = await fetch("/api/attendance/class-report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          classId: selectedClass,
-          dateFrom,
-          dateTo
-        })
-      });
-
-      if (!response.ok) throw new Error("Failed to generate report");
-
-      const data = await response.json();
-      setClassAttendanceReport(data.report || []);
+      const data = await attendanceService.getClassReport(selectedClass, dateFrom, dateTo);
+      setClassAttendanceReport(Array.isArray(data) ? data : data?.report || []);
       toast({ title: "Success", description: "Report generated" });
     } catch (error) {
       console.error("Error generating report:", error);
@@ -234,25 +232,25 @@ export default function AttendancePage() {
             <Card className="border-none shadow-sm bg-white">
               <CardContent className="pt-6">
                 <p className="text-xs text-muted-foreground font-bold">Attendance Rate</p>
-                <p className="text-3xl font-black text-primary">{studentSummary.percentage || 0}%</p>
+                <p className="text-3xl font-black text-primary">{studentSummary.attendance_percentage || studentSummary.percentage || 0}%</p>
               </CardContent>
             </Card>
             <Card className="border-none shadow-sm bg-white">
               <CardContent className="pt-6">
                 <p className="text-xs text-muted-foreground font-bold">Present</p>
-                <p className="text-3xl font-black text-green-600">{studentSummary.present || 0}</p>
+                <p className="text-3xl font-black text-green-600">{studentSummary.present_days || studentSummary.present || 0}</p>
               </CardContent>
             </Card>
             <Card className="border-none shadow-sm bg-white">
               <CardContent className="pt-6">
                 <p className="text-xs text-muted-foreground font-bold">Absent</p>
-                <p className="text-3xl font-black text-destructive">{studentSummary.absent || 0}</p>
+                <p className="text-3xl font-black text-destructive">{studentSummary.absent_days || studentSummary.absent || 0}</p>
               </CardContent>
             </Card>
             <Card className="border-none shadow-sm bg-white">
               <CardContent className="pt-6">
                 <p className="text-xs text-muted-foreground font-bold">Total Sessions</p>
-                <p className="text-3xl font-black text-blue-600">{studentSummary.total || 0}</p>
+                <p className="text-3xl font-black text-blue-600">{studentSummary.total_days || studentSummary.total || 0}</p>
               </CardContent>
             </Card>
           </div>
@@ -283,9 +281,9 @@ export default function AttendancePage() {
                   <TableBody>
                     {myAttendance.map((record: any) => (
                       <TableRow key={record.id}>
-                        <TableCell className="font-bold">{record.date}</TableCell>
-                        <TableCell>{record.subject}</TableCell>
-                        <TableCell className="text-sm">{record.teacherName}</TableCell>
+                        <TableCell className="font-bold">{record.session?.date || record.date}</TableCell>
+                        <TableCell>{record.session?.subject_name || record.subject || "General"}</TableCell>
+                        <TableCell className="text-sm">{record.session?.teacher_name || record.teacherName || "N/A"}</TableCell>
                         <TableCell>
                           <Badge className={cn(record.status === "present" ? "bg-green-600" : record.status === "absent" ? "bg-destructive" : "bg-amber-500")}>
                             {record.status?.toUpperCase() || "N/A"}
@@ -360,10 +358,34 @@ export default function AttendancePage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {/* Students would be loaded from API based on selected class */}
-                    <div className="text-center py-8 text-muted-foreground text-sm">
-                      Select a class to view students
-                    </div>
+                    {classStudents.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground text-sm">
+                        Select a class to view students
+                      </div>
+                    ) : (
+                      classStudents.map((student: any) => (
+                        <div key={student.id} className="flex items-center justify-between rounded-xl border p-3">
+                          <div>
+                            <p className="font-bold text-primary">{student.user?.name || student.student_name}</p>
+                            <p className="text-xs text-muted-foreground">{student.admission_number}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            {["present", "late", "absent", "excused"].map((status) => (
+                              <Button
+                                key={status}
+                                type="button"
+                                size="sm"
+                                variant={bulkAttendanceData[student.id] === status ? "default" : "outline"}
+                                onClick={() => handleRecordAttendance(student.id, status)}
+                                className="capitalize"
+                              >
+                                {status}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -407,10 +429,10 @@ export default function AttendancePage() {
                         {attendanceSessions.map((session: any) => (
                           <TableRow key={session.id}>
                             <TableCell className="font-bold">{session.date}</TableCell>
-                            <TableCell>{session.className}</TableCell>
-                            <TableCell>{session.subject}</TableCell>
-                            <TableCell className="font-bold text-green-600">{session.present}</TableCell>
-                            <TableCell className="font-bold text-destructive">{session.absent}</TableCell>
+                            <TableCell>{session.student_class || session.className}</TableCell>
+                            <TableCell>{session.subject_name || session.subject || "General"}</TableCell>
+                            <TableCell className="font-bold text-green-600">{session.total_present ?? session.present ?? 0}</TableCell>
+                            <TableCell className="font-bold text-destructive">{session.total_absent ?? session.absent ?? 0}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -582,15 +604,15 @@ export default function AttendancePage() {
                       <TableBody>
                         {attendanceRecords.map((record: any) => (
                           <TableRow key={record.id}>
-                            <TableCell className="font-bold">{record.studentName}</TableCell>
-                            <TableCell>{record.className}</TableCell>
-                            <TableCell className="text-sm">{record.date}</TableCell>
+                            <TableCell className="font-bold">{record.student_name || record.studentName}</TableCell>
+                            <TableCell>{record.session?.student_class || record.className}</TableCell>
+                            <TableCell className="text-sm">{record.session?.date || record.date}</TableCell>
                             <TableCell>
                               <Badge className={cn(record.status === "present" ? "bg-green-600" : record.status === "absent" ? "bg-destructive" : "bg-amber-500")}>
                                 {record.status?.toUpperCase() || "N/A"}
                               </Badge>
                             </TableCell>
-                            <TableCell className="text-sm">{record.teacherName}</TableCell>
+                            <TableCell className="text-sm">{record.session?.teacher_name || record.teacherName || "N/A"}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
