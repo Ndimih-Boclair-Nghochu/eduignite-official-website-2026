@@ -93,6 +93,58 @@ class StudentViewSet(viewsets.ModelViewSet):
         messages.append(f"{label}: {errors}")
         return messages
 
+    def _extract_name_from_row(self, row):
+        preferred_columns = [
+            'name', 'student_name', 'full_name', 'fullname', 'student', 'learner_name',
+            'nom', 'noms', 'student names'
+        ]
+        lowered_map = {str(key).strip().lower(): value for key, value in row.items() if key is not None}
+
+        for column in preferred_columns:
+            value = lowered_map.get(column)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+        for value in row.values():
+            if not isinstance(value, str):
+                continue
+            cleaned = value.strip()
+            if not cleaned:
+                continue
+            if '@' in cleaned:
+                continue
+            digits = ''.join(char for char in cleaned if char.isdigit())
+            if digits and len(digits) >= max(6, len(cleaned) - 2):
+                continue
+            return cleaned
+        return ''
+
+    def _iter_upload_rows(self, decoded):
+        stripped_lines = [line for line in decoded.splitlines() if line.strip()]
+        if not stripped_lines:
+            return
+
+        try:
+            dialect = csv.Sniffer().sniff('\n'.join(stripped_lines[:5]), delimiters=',;\t|')
+        except csv.Error:
+            dialect = csv.excel
+
+        try:
+            has_header = csv.Sniffer().has_header('\n'.join(stripped_lines[:5]))
+        except csv.Error:
+            has_header = False
+
+        if has_header:
+            reader = csv.DictReader(StringIO('\n'.join(stripped_lines)), dialect=dialect)
+            for index, row in enumerate(reader, start=2):
+                yield index, row or {}
+            return
+
+        for index, line in enumerate(stripped_lines, start=1):
+            parts = next(csv.reader([line], dialect=dialect))
+            row = {f'column_{position}': value for position, value in enumerate(parts)}
+            yield index, row
+
     def update(self, request, *args, **kwargs):
         if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
             raise PermissionDenied("Only school administrators can update students.")
@@ -224,7 +276,6 @@ class StudentViewSet(viewsets.ModelViewSet):
         except UnicodeDecodeError:
             return Response({'detail': 'Unable to read the uploaded file. Use UTF-8 CSV.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        reader = csv.DictReader(StringIO(decoded))
         created_students = []
         failed_rows = []
 
@@ -244,17 +295,22 @@ class StudentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        for index, row in enumerate(reader, start=2):
+        for index, row in self._iter_upload_rows(decoded):
+            if not any(str(value).strip() for value in row.values()):
+                continue
+
+            normalized_row = {str(key).strip().lower(): value for key, value in row.items() if key is not None}
+
             row_payload = {
                 **base_payload,
-                'name': (row.get('name') or row.get('student_name') or '').strip(),
-                'email': (row.get('email') or '').strip(),
-                'phone': (row.get('phone') or '').strip(),
-                'whatsapp': (row.get('whatsapp') or '').strip(),
-                'admission_number': (row.get('admission_number') or '').strip(),
-                'guardian_name': (row.get('guardian_name') or base_payload['guardian_name'] or '').strip(),
-                'guardian_phone': (row.get('guardian_phone') or base_payload['guardian_phone'] or '').strip(),
-                'guardian_whatsapp': (row.get('guardian_whatsapp') or base_payload['guardian_whatsapp'] or '').strip(),
+                'name': self._extract_name_from_row(normalized_row),
+                'email': (normalized_row.get('email') or normalized_row.get('student_email') or '').strip(),
+                'phone': (normalized_row.get('phone') or normalized_row.get('telephone') or '').strip(),
+                'whatsapp': (normalized_row.get('whatsapp') or normalized_row.get('whatsapp_number') or '').strip(),
+                'admission_number': (normalized_row.get('admission_number') or normalized_row.get('admission_no') or '').strip(),
+                'guardian_name': (normalized_row.get('guardian_name') or normalized_row.get('parent_name') or base_payload['guardian_name'] or '').strip(),
+                'guardian_phone': (normalized_row.get('guardian_phone') or normalized_row.get('parent_phone') or base_payload['guardian_phone'] or '').strip(),
+                'guardian_whatsapp': (normalized_row.get('guardian_whatsapp') or normalized_row.get('parent_whatsapp') or base_payload['guardian_whatsapp'] or '').strip(),
             }
 
             serializer = StudentCreateSerializer(data=row_payload, context=self.get_serializer_context())
@@ -288,9 +344,32 @@ class StudentViewSet(viewsets.ModelViewSet):
                 'created_students': created_students,
                 'failed_rows': failed_rows,
                 'detail': detail_message,
+                'activation_sheet_url': f'/api/v1/students/students/activation_sheet/?class_name={base_payload["student_class"]}',
             },
             status=status.HTTP_201_CREATED if created_students else status.HTTP_400_BAD_REQUEST,
         )
+
+    @action(detail=False, methods=['get'])
+    def activation_sheet(self, request):
+        """Download activation list containing student names and matricules."""
+        if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN', 'TEACHER']:
+            raise PermissionDenied("Only school staff can download activation sheets.")
+
+        class_name = request.query_params.get('class_name')
+        students = self.get_queryset()
+        if class_name:
+            students = students.filter(student_class=class_name)
+
+        lines = ['name,matricule,admission_number,class_name']
+        for student in students.select_related('user').order_by('student_class', 'user__name'):
+            lines.append(
+                f'"{student.user.name}","{student.user.matricule}","{student.admission_number}","{student.student_class}"'
+            )
+
+        response = HttpResponse('\n'.join(lines), content_type='text/csv')
+        filename_suffix = (class_name or 'all_classes').replace(' ', '_')
+        response['Content-Disposition'] = f'attachment; filename="student_activation_sheet_{filename_suffix}.csv"'
+        return response
 
     @action(detail=False, methods=['get'])
     def class_list(self, request):

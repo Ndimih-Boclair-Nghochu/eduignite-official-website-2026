@@ -166,6 +166,7 @@ class UserDetailSerializer(serializers.ModelSerializer):
 class UserCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating new users."""
 
+    email = serializers.EmailField(required=False, allow_blank=True)
     password = serializers.CharField(
         write_only=True,
         required=False,
@@ -195,9 +196,11 @@ class UserCreateSerializer(serializers.ModelSerializer):
         requester = getattr(request, 'user', None)
         requested_role = data.get('role')
         requested_school = data.get('school')
+        requested_email = (data.get('email') or '').strip()
 
         allowed_roles_for_school_admin = {'SUB_ADMIN', 'TEACHER', 'BURSAR', 'LIBRARIAN', 'PARENT'}
         allowed_roles_for_sub_admin = {'TEACHER', 'BURSAR', 'LIBRARIAN', 'PARENT'}
+        school_scoped_roles = {'SCHOOL_ADMIN', 'SUB_ADMIN', 'TEACHER', 'BURSAR', 'LIBRARIAN', 'PARENT', 'STUDENT'}
 
         if requester and requester.is_authenticated and requester.is_school_admin and not requester.is_platform_executive:
             if not requester.school:
@@ -214,6 +217,12 @@ class UserCreateSerializer(serializers.ModelSerializer):
             if requester.role == 'SUB_ADMIN' and requested_role not in allowed_roles_for_sub_admin:
                 raise serializers.ValidationError({'role': 'Sub-admins can only create teacher, bursar, librarian, or parent accounts.'})
 
+        if requested_role in school_scoped_roles and not requested_school:
+            raise serializers.ValidationError({'school': 'A school must be selected for this role.'})
+
+        if requested_email and User.objects.filter(email=requested_email).exists():
+            raise serializers.ValidationError({'email': 'A user with this email already exists.'})
+
         password = data.get('password') or ''
         password_confirm = data.get('password_confirm') or ''
         if password or password_confirm:
@@ -228,11 +237,15 @@ class UserCreateSerializer(serializers.ModelSerializer):
         """Create user with auto-generated matricule."""
         validated_data.pop('password_confirm')
         password = validated_data.pop('password', '')
+        email = (validated_data.pop('email', '') or '').strip()
 
         matricule = self._generate_unique_matricule()
+        if not email:
+            email = self._generate_placeholder_email(matricule, validated_data.get('role'))
 
         user = User.objects.create_user(
             matricule=matricule,
+            email=email,
             password=password or '!pending_activation',
             **validated_data,
         )
@@ -247,12 +260,20 @@ class UserCreateSerializer(serializers.ModelSerializer):
             'BURSAR': 'BUR',
             'LIBRARIAN': 'LIB',
             'PARENT': 'PAR',
+            'SCHOOL_ADMIN': 'ADM',
         }
         prefix = prefix_map.get(role, 'USR')
         while True:
             matricule = f'{prefix}{uuid.uuid4().hex[:8].upper()}'
             if not User.objects.filter(matricule=matricule).exists():
                 return matricule
+
+    def _generate_placeholder_email(self, matricule, role):
+        role_slug = (role or 'user').lower()
+        email = f'{matricule.lower()}@{role_slug}.eduignite.local'
+        while User.objects.filter(email=email).exists():
+            email = f'{matricule.lower()}.{uuid.uuid4().hex[:4]}@{role_slug}.eduignite.local'
+        return email
 
 
 @extend_schema_serializer(

@@ -14,8 +14,6 @@ import {
   Users,
   Plus,
   Search,
-  MoreVertical,
-  Trash2,
   CheckCircle2,
   Clock,
   AlertCircle,
@@ -23,6 +21,8 @@ import {
   ShieldCheck,
   Loader2,
   X,
+  FileDown,
+  KeyRound,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -33,16 +33,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usersService } from "@/lib/api/services/users.service";
 import { schoolsService } from "@/lib/api/services/schools.service";
@@ -248,16 +239,13 @@ export default function StaffPage() {
   const handleCreateStaff = async () => {
     if (
       !newStaff.name ||
-      !newStaff.email ||
       !newStaff.role ||
-      !newStaff.password ||
-      !newStaff.passwordConfirm ||
       !(newStaff.school || user?.school?.id)
     ) {
       toast({
         variant: "destructive",
         title: "Missing Information",
-        description: "Please complete all required staff fields.",
+        description: "Full name, role, and school are the minimum required staff details.",
       });
       return;
     }
@@ -266,13 +254,13 @@ export default function StaffPage() {
     try {
       const created = await createUserMutation.mutateAsync({
         name: newStaff.name.trim(),
-        email: newStaff.email.trim(),
+        email: newStaff.email.trim() || undefined,
         phone: newStaff.phone.trim() || undefined,
         whatsapp: newStaff.whatsapp.trim() || undefined,
         role: newStaff.role,
         school: newStaff.school || user?.school?.id,
-        password: newStaff.password,
-        password_confirm: newStaff.passwordConfirm,
+        password: newStaff.password || undefined,
+        password_confirm: newStaff.passwordConfirm || undefined,
       });
 
       setCreatedStaff(created);
@@ -297,6 +285,7 @@ export default function StaffPage() {
         title: "Staff Creation Failed",
         description:
           error?.response?.data?.detail ||
+          error?.response?.data?.email?.[0] ||
           error?.response?.data?.password_confirm?.[0] ||
           error?.response?.data?.password?.[0] ||
           "Unable to create the staff account.",
@@ -304,6 +293,36 @@ export default function StaffPage() {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const downloadActivationSlip = (staff: any) => {
+    if (!staff) return;
+    const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Staff Activation - ${staff.name}</title></head>
+<body style="font-family:Arial,sans-serif;padding:32px;color:#111;">
+  <h1 style="margin:0 0 8px;">${user?.school?.name || "EduIgnite"}</h1>
+  <p style="margin:0 0 24px;">Staff Activation Record</p>
+  <table style="border-collapse:collapse;width:100%;max-width:720px;">
+    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Name</strong></td><td style="padding:8px;border:1px solid #ddd;">${staff.name || "-"}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Matricule</strong></td><td style="padding:8px;border:1px solid #ddd;">${staff.matricule || "-"}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Role</strong></td><td style="padding:8px;border:1px solid #ddd;">${staff.role || "-"}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Email</strong></td><td style="padding:8px;border:1px solid #ddd;">${staff.email || "-"}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Phone</strong></td><td style="padding:8px;border:1px solid #ddd;">${staff.phone || "-"}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>WhatsApp</strong></td><td style="padding:8px;border:1px solid #ddd;">${staff.whatsapp || "-"}</td></tr>
+  </table>
+  <p style="margin-top:24px;">This staff member can activate the account with the matricule above and complete remaining profile details after first login.</p>
+</body>
+</html>`;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${(staff.name || "staff").replace(/\s+/g, "_").toLowerCase()}_activation.html`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
   };
 
   return (
@@ -460,8 +479,8 @@ export default function StaffPage() {
                 <Input value={newStaff.name} onChange={(e) => setNewStaff({ ...newStaff, name: e.target.value })} className="h-12 bg-accent/30 border-none rounded-xl font-bold" />
               </div>
               <div className="space-y-2">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Email</Label>
-                <Input value={newStaff.email} onChange={(e) => setNewStaff({ ...newStaff, email: e.target.value })} className="h-12 bg-accent/30 border-none rounded-xl font-bold" type="email" />
+                <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Email (optional)</Label>
+                <Input value={newStaff.email} onChange={(e) => setNewStaff({ ...newStaff, email: e.target.value })} className="h-12 bg-accent/30 border-none rounded-xl font-bold" type="email" placeholder="Leave blank to auto-generate an activation email" />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -504,13 +523,19 @@ export default function StaffPage() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Temporary Password</Label>
-                <Input value={newStaff.password} onChange={(e) => setNewStaff({ ...newStaff, password: e.target.value })} className="h-12 bg-accent/30 border-none rounded-xl font-bold" type="password" />
+                <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Temporary Password (optional)</Label>
+                <Input value={newStaff.password} onChange={(e) => setNewStaff({ ...newStaff, password: e.target.value })} className="h-12 bg-accent/30 border-none rounded-xl font-bold" type="password" placeholder="Leave blank to activate later with matricule" />
               </div>
               <div className="space-y-2">
                 <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Confirm Password</Label>
-                <Input value={newStaff.passwordConfirm} onChange={(e) => setNewStaff({ ...newStaff, passwordConfirm: e.target.value })} className="h-12 bg-accent/30 border-none rounded-xl font-bold" type="password" />
+                <Input value={newStaff.passwordConfirm} onChange={(e) => setNewStaff({ ...newStaff, passwordConfirm: e.target.value })} className="h-12 bg-accent/30 border-none rounded-xl font-bold" type="password" placeholder="Only needed if a password is provided" />
               </div>
+            </div>
+            <div className="rounded-2xl border border-primary/10 bg-accent/10 p-4 text-xs text-muted-foreground space-y-2">
+              <p className="font-black uppercase tracking-widest text-primary">Activation Notes</p>
+              <p>The system always generates the staff matricule automatically.</p>
+              <p>If email is omitted, EduIgnite will generate a safe placeholder email for activation.</p>
+              <p>If password is omitted, the staff member can activate later using the matricule.</p>
             </div>
           </div>
           <DialogFooter className="bg-accent/20 p-6 border-t border-accent">
@@ -540,6 +565,15 @@ export default function StaffPage() {
               <Badge variant="outline" className="text-[10px] border-primary/10 text-primary font-bold uppercase">
                 {createdStaff?.role?.replace('_', ' ')}
               </Badge>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Button variant="outline" className="rounded-xl border-primary/10 font-bold text-primary gap-2" onClick={() => downloadActivationSlip(createdStaff)}>
+                <FileDown className="w-4 h-4" /> Download Activation Slip
+              </Button>
+              <div className="rounded-xl border border-primary/10 bg-accent/10 px-4 py-3 text-xs text-muted-foreground flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-primary" />
+                <span>The generated matricule is the activation key.</span>
+              </div>
             </div>
           </div>
         </DialogContent>

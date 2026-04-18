@@ -776,7 +776,7 @@ export interface AcknowledgeRemarkRequest {
 export interface CreateUserRequest {
   matricule?: string;
   name: string;
-  email: string;
+  email?: string;
   password?: string;
   password_confirm?: string;
   phone?: string;
