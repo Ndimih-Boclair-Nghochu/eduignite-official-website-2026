@@ -42,6 +42,8 @@ const CLASS_LEVEL_OPTIONS = [
 
 const SECTION_OPTIONS = [
   { value: "general", label: "General" },
+  { value: "bilingual", label: "Bilingual" },
+  { value: "technical", label: "Technical" },
   { value: "science", label: "Science" },
   { value: "arts", label: "Arts" },
   { value: "commercial", label: "Commercial" },
@@ -137,8 +139,8 @@ export default function StudentsPage() {
   const [bulkData, setBulkData] = useState<BulkStudentUploadRequest>({
     file: new File([], "students.csv"),
     student_class: "",
-    class_level: "form1",
-    section: "general",
+    class_level: undefined,
+    section: undefined,
     admission_date: "",
     guardian_name: "",
     guardian_phone: "",
@@ -652,16 +654,16 @@ export default function StudentsPage() {
                 <Input value={bulkData.student_class} onChange={(event) => setBulkData((current) => ({ ...current, student_class: event.target.value }))} placeholder="Form 1 A" />
               </div>
               <div className="space-y-2">
-                <Label>Class Level</Label>
+                <Label>Class Level (optional)</Label>
                 <Select value={bulkData.class_level} onValueChange={(value) => setBulkData((current) => ({ ...current, class_level: value }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Auto-detect from class name" /></SelectTrigger>
                   <SelectContent>{CLASS_LEVEL_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Section</Label>
+                <Label>Section (optional)</Label>
                 <Select value={bulkData.section} onValueChange={(value) => setBulkData((current) => ({ ...current, section: value }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Auto-detect or default to General" /></SelectTrigger>
                   <SelectContent>{SECTION_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
@@ -682,7 +684,7 @@ export default function StudentsPage() {
             <div className="space-y-2">
               <Label>CSV File</Label>
               <Input type="file" accept=".csv,text/csv" onChange={(event) => setBulkFile(event.target.files?.[0] || null)} />
-              <p className="text-xs text-muted-foreground">Supported columns: `name`, `email`, `phone`, `guardian_name`, `guardian_phone`, `admission_number`.</p>
+              <p className="text-xs text-muted-foreground">Only student names are required. Extra columns are allowed and ignored when not needed. Supported examples: `name`, `email`, `phone`, `guardian_name`, `guardian_phone`, `admission_number`, `class_level`, `section`.</p>
             </div>
 
             {bulkResult && (

@@ -831,8 +831,8 @@ export interface CreateStudentRequest {
   password?: string;
   school?: string;
   student_class: string;
-  class_level: string;
-  section: string;
+  class_level?: string;
+  section?: string;
   date_of_birth?: string;
   gender: "male" | "female" | "other";
   guardian_name?: string;
@@ -853,8 +853,8 @@ export type UpdateStudentRequest = Partial<CreateStudentRequest>;
 export interface BulkStudentUploadRequest {
   file: File;
   student_class: string;
-  class_level: string;
-  section: string;
+  class_level?: string;
+  section?: string;
   admission_date?: string;
   guardian_name?: string;
   guardian_phone?: string;

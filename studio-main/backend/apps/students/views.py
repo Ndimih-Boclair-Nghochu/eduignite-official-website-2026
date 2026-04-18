@@ -119,6 +119,39 @@ class StudentViewSet(viewsets.ModelViewSet):
             return cleaned
         return ''
 
+    def _infer_class_level(self, student_class):
+        label = (student_class or '').strip().lower()
+        normalized = label.replace(' ', '')
+        if 'upper sixth' in label or 'upper6' in normalized:
+            return 'upper_sixth'
+        if 'lower sixth' in label or 'lower6' in normalized:
+            return 'lower_sixth'
+        if 'form1' in normalized:
+            return 'form1'
+        if 'form2' in normalized:
+            return 'form2'
+        if 'form3' in normalized:
+            return 'form3'
+        if 'form4' in normalized:
+            return 'form4'
+        if 'form5' in normalized:
+            return 'form5'
+        return 'form1'
+
+    def _infer_section(self, student_class):
+        label = (student_class or '').strip().lower()
+        if 'bilingual' in label:
+            return 'bilingual'
+        if 'technical' in label:
+            return 'technical'
+        if 'science' in label:
+            return 'science'
+        if 'arts' in label or 'art' in label:
+            return 'arts'
+        if 'commercial' in label or 'commerce' in label:
+            return 'commercial'
+        return 'general'
+
     def _iter_upload_rows(self, decoded):
         stripped_lines = [line for line in decoded.splitlines() if line.strip()]
         if not stripped_lines:
@@ -281,17 +314,17 @@ class StudentViewSet(viewsets.ModelViewSet):
 
         base_payload = {
             'student_class': request.data.get('student_class', ''),
-            'class_level': request.data.get('class_level', ''),
-            'section': request.data.get('section', 'general'),
+            'class_level': request.data.get('class_level', '') or self._infer_class_level(request.data.get('student_class', '')),
+            'section': request.data.get('section', '') or self._infer_section(request.data.get('student_class', '')),
             'admission_date': request.data.get('admission_date') or timezone.now().date(),
             'guardian_name': request.data.get('guardian_name', ''),
             'guardian_phone': request.data.get('guardian_phone', ''),
             'guardian_whatsapp': request.data.get('guardian_whatsapp', ''),
         }
 
-        if not base_payload['student_class'] or not base_payload['class_level']:
+        if not base_payload['student_class']:
             return Response(
-                {'detail': 'student_class and class_level are required for bulk upload.'},
+                {'detail': 'student_class is required for bulk upload.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -308,6 +341,16 @@ class StudentViewSet(viewsets.ModelViewSet):
                 'phone': (normalized_row.get('phone') or normalized_row.get('telephone') or '').strip(),
                 'whatsapp': (normalized_row.get('whatsapp') or normalized_row.get('whatsapp_number') or '').strip(),
                 'admission_number': (normalized_row.get('admission_number') or normalized_row.get('admission_no') or '').strip(),
+                'class_level': (
+                    (normalized_row.get('class_level') or normalized_row.get('level') or normalized_row.get('form') or '').strip()
+                    or base_payload['class_level']
+                    or self._infer_class_level(base_payload['student_class'])
+                ),
+                'section': (
+                    (normalized_row.get('section') or normalized_row.get('department') or normalized_row.get('stream') or '').strip().lower()
+                    or base_payload['section']
+                    or self._infer_section(base_payload['student_class'])
+                ),
                 'guardian_name': (normalized_row.get('guardian_name') or normalized_row.get('parent_name') or base_payload['guardian_name'] or '').strip(),
                 'guardian_phone': (normalized_row.get('guardian_phone') or normalized_row.get('parent_phone') or base_payload['guardian_phone'] or '').strip(),
                 'guardian_whatsapp': (normalized_row.get('guardian_whatsapp') or normalized_row.get('parent_whatsapp') or base_payload['guardian_whatsapp'] or '').strip(),

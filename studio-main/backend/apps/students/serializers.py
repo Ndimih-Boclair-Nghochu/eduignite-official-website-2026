@@ -94,6 +94,7 @@ class StudentDetailSerializer(serializers.ModelSerializer):
 
 
 class StudentCreateSerializer(serializers.ModelSerializer):
+    school = serializers.PrimaryKeyRelatedField(read_only=True)
     email = serializers.EmailField(required=False, allow_blank=True)
     name = serializers.CharField(max_length=255, required=False, allow_blank=True)
     first_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
@@ -101,6 +102,8 @@ class StudentCreateSerializer(serializers.ModelSerializer):
     phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
     whatsapp = serializers.CharField(max_length=20, required=False, allow_blank=True)
     password = serializers.CharField(write_only=True, min_length=8, required=False, allow_blank=True)
+    class_level = serializers.ChoiceField(choices=Student.CLASS_LEVEL_CHOICES, required=False, default='form1')
+    section = serializers.ChoiceField(choices=Student.SECTION_CHOICES, required=False, default='general')
     gender = serializers.ChoiceField(choices=Student.GENDER_CHOICES, required=False, default='other')
     guardian_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
     guardian_phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
@@ -172,6 +175,8 @@ class StudentCreateSerializer(serializers.ModelSerializer):
         if not full_name:
             raise serializers.ValidationError({'name': 'Provide the student full name.'})
         attrs['name'] = full_name
+        attrs['class_level'] = attrs.get('class_level') or self._infer_class_level(attrs.get('student_class', ''))
+        attrs['section'] = attrs.get('section') or self._infer_section(attrs.get('student_class', ''))
 
         if attrs.get('create_parent_account'):
             if not attrs.get('parent_name', '').strip() or not attrs.get('parent_email', '').strip():
@@ -185,6 +190,41 @@ class StudentCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({'parent_email': 'Parent account belongs to a different school.'})
 
         return attrs
+
+    def _infer_class_level(self, student_class):
+        label = (student_class or '').strip().lower()
+        if 'upper sixth' in label or 'upper 6' in label or 'uppersixth' in label:
+            return 'upper_sixth'
+        if 'lower sixth' in label or 'lower 6' in label or 'lowersixth' in label:
+            return 'lower_sixth'
+        for level in ['form1', 'form2', 'form3', 'form4', 'form5']:
+            if level in label.replace(' ', ''):
+                return level
+        if 'form 1' in label:
+            return 'form1'
+        if 'form 2' in label:
+            return 'form2'
+        if 'form 3' in label:
+            return 'form3'
+        if 'form 4' in label:
+            return 'form4'
+        if 'form 5' in label:
+            return 'form5'
+        return 'form1'
+
+    def _infer_section(self, student_class):
+        label = (student_class or '').strip().lower()
+        if 'bilingual' in label:
+            return 'bilingual'
+        if 'technical' in label:
+            return 'technical'
+        if 'science' in label:
+            return 'science'
+        if 'arts' in label or 'art' in label:
+            return 'arts'
+        if 'commercial' in label or 'commerce' in label:
+            return 'commercial'
+        return 'general'
 
     def _generate_matricule(self):
         while True:

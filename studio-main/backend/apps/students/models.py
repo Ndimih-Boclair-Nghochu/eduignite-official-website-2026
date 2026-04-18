@@ -22,6 +22,8 @@ class Student(TimeStampedModel):
 
     SECTION_CHOICES = [
         ('general', 'General'),
+        ('bilingual', 'Bilingual'),
+        ('technical', 'Technical'),
         ('science', 'Science'),
         ('arts', 'Arts'),
         ('commercial', 'Commercial'),
@@ -37,15 +39,15 @@ class Student(TimeStampedModel):
     user = models.OneToOneField('users.User', on_delete=models.CASCADE, related_name='student_profile')
     school = models.ForeignKey('schools.School', on_delete=models.CASCADE, related_name='students')
     student_class = models.CharField(max_length=100, help_text='e.g., Form 5, Upper Sixth Science')
-    class_level = models.CharField(max_length=20, choices=CLASS_LEVEL_CHOICES)
+    class_level = models.CharField(max_length=20, choices=CLASS_LEVEL_CHOICES, default='form1')
     section = models.CharField(max_length=50, choices=SECTION_CHOICES, default='general')
     date_of_birth = models.DateField(null=True, blank=True)
-    gender = models.CharField(max_length=10, choices=GENDER_CHOICES)
-    guardian_name = models.CharField(max_length=255)
-    guardian_phone = models.CharField(max_length=20)
+    gender = models.CharField(max_length=10, choices=GENDER_CHOICES, default='other')
+    guardian_name = models.CharField(max_length=255, blank=True, default='')
+    guardian_phone = models.CharField(max_length=20, blank=True, default='')
     guardian_whatsapp = models.CharField(max_length=20, null=True, blank=True)
     admission_number = models.CharField(max_length=50, unique=True, db_index=True)
-    admission_date = models.DateField()
+    admission_date = models.DateField(null=True, blank=True)
     annual_average = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True,
                                          validators=[MinValueValidator(0), MaxValueValidator(20)])
     is_on_honour_roll = models.BooleanField(default=False)
