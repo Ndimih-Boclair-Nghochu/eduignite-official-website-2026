@@ -8,7 +8,7 @@ class Subject(TimeStampedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school = models.ForeignKey('schools.School', on_delete=models.CASCADE, related_name='subjects')
     name = models.CharField(max_length=255)
-    code = models.CharField(max_length=50, unique=True, db_index=True)
+    code = models.CharField(max_length=50, db_index=True)
     level = models.CharField(max_length=50, help_text='Class level this subject is offered in')
     coefficient = models.DecimalField(max_digits=5, decimal_places=2, default=1.0)
     teacher = models.ForeignKey('users.User', on_delete=models.SET_NULL, null=True, blank=True,
