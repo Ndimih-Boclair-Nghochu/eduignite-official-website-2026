@@ -249,10 +249,10 @@ class FounderProfile(models.Model):
         db_table = 'founder_profiles'
         ordering = ['-is_primary_founder', 'user__date_joined']
         indexes = [
-            models.Index(fields=['is_primary_founder']),
-            models.Index(fields=['can_be_removed']),
-            models.Index(fields=['shares_expire_at']),
-            models.Index(fields=['access_level']),
+            models.Index(fields=['is_primary_founder'], name='founder_pro_is_prim_4ef813_idx'),
+            models.Index(fields=['can_be_removed'], name='founder_pro_can_be__7be4be_idx'),
+            models.Index(fields=['shares_expire_at'], name='founder_pro_shares_expire_idx'),
+            models.Index(fields=['access_level'], name='founder_pro_access_level_idx'),
         ]
 
     def __str__(self):
@@ -316,8 +316,8 @@ class FounderShareAdjustment(models.Model):
         db_table = 'founder_share_adjustments'
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['founder', 'created_at']),
-            models.Index(fields=['expires_at']),
+            models.Index(fields=['founder', 'created_at'], name='founder_sha_founder_f3e8e4_idx'),
+            models.Index(fields=['expires_at'], name='founder_sha_expires_idx'),
         ]
 
     def __str__(self):

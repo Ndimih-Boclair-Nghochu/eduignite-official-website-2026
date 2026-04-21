@@ -210,6 +210,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({'school': 'You can only create users inside your own school.'})
 
             data['school'] = requester.school
+            requested_school = requester.school
 
             if requester.role == 'SCHOOL_ADMIN' and requested_role not in allowed_roles_for_school_admin:
                 raise serializers.ValidationError({'role': 'School admins can only create sub-admin, teacher, bursar, librarian, or parent accounts.'})

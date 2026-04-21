@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_serializer, OpenApiExample
+import re
 from .models import School, SchoolSettings
 
 User = get_user_model()
@@ -158,6 +159,7 @@ class SchoolCreateSerializer(serializers.ModelSerializer):
     """
 
     matricule = serializers.CharField(read_only=True)
+    phone = serializers.CharField(max_length=20)
 
     class Meta:
         model = School
@@ -189,17 +191,28 @@ class SchoolCreateSerializer(serializers.ModelSerializer):
 
     def validate_id(self, value):
         """Validate and normalise the optional school ID."""
+        if value:
+            value = re.sub(r'[^A-Za-z0-9_-]+', '-', value.strip().upper()).strip('-')
         if value and len(value) > 50:
             raise serializers.ValidationError('School ID cannot exceed 50 characters.')
-        return value.upper() if value else value
+        return value
 
     def validate(self, attrs):
         # Auto-derive id from short_name when not supplied
         if not attrs.get('id'):
             short_name = attrs.get('short_name', '')
-            attrs['id'] = short_name.strip().upper() or attrs['name'][:50].upper()
+            raw_id = short_name.strip() or attrs['name'][:50]
+            attrs['id'] = re.sub(r'[^A-Za-z0-9_-]+', '-', raw_id.upper()).strip('-')
+        if attrs.get('short_name'):
+            attrs['short_name'] = attrs['short_name'].strip().upper()
+        if attrs.get('phone'):
+            attrs['phone'] = re.sub(r'[\s().-]+', '', attrs['phone'].strip())
         email = attrs.get('email')
-        if email and User.objects.filter(email=email).exists():
+        duplicate_user = User.objects.filter(email=email).first() if email else None
+        if duplicate_user and not (
+            duplicate_user.role == 'SCHOOL_ADMIN'
+            and not duplicate_user.school_id
+        ):
             raise serializers.ValidationError(
                 {'email': 'This email is already used by another account.'}
             )
@@ -209,16 +222,26 @@ class SchoolCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         school = School.objects.create(**validated_data)
 
-        principal_user = User.objects.create_user(
-            matricule=school.matricule,
-            name=school.principal,
-            email=school.email,
-            role='SCHOOL_ADMIN',
-            password='!pending_activation',
-            school=school,
-            is_active=True,
-            is_license_paid=False,
-        )
+        principal_user = User.objects.filter(email=school.email).first()
+        if principal_user:
+            principal_user.matricule = school.matricule
+            principal_user.name = school.principal
+            principal_user.role = 'SCHOOL_ADMIN'
+            principal_user.school = school
+            principal_user.is_active = True
+            principal_user.set_password('!pending_activation')
+            principal_user.save(update_fields=['matricule', 'name', 'role', 'school', 'is_active', 'password'])
+        else:
+            principal_user = User.objects.create_user(
+                matricule=school.matricule,
+                name=school.principal,
+                email=school.email,
+                role='SCHOOL_ADMIN',
+                password='!pending_activation',
+                school=school,
+                is_active=True,
+                is_license_paid=False,
+            )
 
         school.principal_user = principal_user
         school.save(update_fields=['principal_user'])
@@ -241,6 +264,8 @@ class SchoolCreateSerializer(serializers.ModelSerializer):
 )
 class SchoolUpdateSerializer(serializers.ModelSerializer):
     """Serializer for updating schools."""
+
+    phone = serializers.CharField(max_length=20, required=False)
 
     class Meta:
         model = School
@@ -274,6 +299,9 @@ class SchoolUpdateSerializer(serializers.ModelSerializer):
         if duplicate_user.exists():
             raise serializers.ValidationError('This email is already used by another account.')
         return value
+
+    def validate_phone(self, value):
+        return re.sub(r'[\s().-]+', '', value.strip()) if value else value
 
     @transaction.atomic
     def update(self, instance, validated_data):
