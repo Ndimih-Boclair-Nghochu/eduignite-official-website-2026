@@ -96,7 +96,8 @@ export default function CommunityPage() {
     }
     setIsReadingImage(true);
     try {
-      setNewBlogData((prev) => ({ ...prev, image: await fileToDataUrl(file) }));
+      const imageDataUrl = await fileToDataUrl(file);
+      setNewBlogData((prev) => ({ ...prev, image: imageDataUrl }));
     } catch (error) {
       toast({ variant: "destructive", title: "Image Upload Failed", description: getApiErrorMessage(error, "Could not read that image file.") });
     } finally {
