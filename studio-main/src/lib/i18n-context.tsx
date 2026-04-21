@@ -158,6 +158,7 @@ const translations: TranslationDict = {
   onlineClasses: { en: "Online Classes", fr: "Classes en ligne" },
   transcript: { en: "Transcript", fr: "Releve de notes" },
   draftTranscript: { en: "Draft Transcript", fr: "Releve de notes provisoire" },
+  workspaceLanguage: { en: "Workspace Language", fr: "Langue de l'espace" },
 };
 
 const backendTextTranslations: TranslationDict = {

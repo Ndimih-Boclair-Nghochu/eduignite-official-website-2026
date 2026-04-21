@@ -46,11 +46,13 @@ import Link from "next/link";
 import { resolveMediaUrl } from "@/lib/media";
 import { getLicenseAccessState } from "@/lib/license";
 import { getApiErrorMessage } from "@/lib/api/errors";
+import { useI18n } from "@/lib/i18n-context";
 
 const EXECUTIVE_ROLES: UserRole[] = ["SUPER_ADMIN", "CEO", "CTO", "COO", "INV", "DESIGNER"];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user, isLoading, platformSettings, addTestimony, addSupport } = useAuth();
+  const { t } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
   const { toast } = useToast();
@@ -248,7 +250,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <header className="hidden md:flex sticky top-0 z-20 items-center justify-between gap-4 border-b border-border/60 bg-background/95 px-8 py-3 backdrop-blur shrink-0">
           <div className="min-w-0">
             <p className="text-[10px] font-black uppercase tracking-[0.24em] text-muted-foreground">
-              Workspace Language
+              {t("workspaceLanguage")}
             </p>
             <p className="truncate text-sm font-black text-primary uppercase tracking-tight">
               {dashboardTitle}
