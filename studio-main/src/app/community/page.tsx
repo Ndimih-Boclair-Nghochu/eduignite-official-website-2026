@@ -45,6 +45,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { getApiErrorMessage } from "@/lib/api/errors";
 import { resolveMediaUrl } from "@/lib/media";
+import { LanguageSwitcher } from "@/components/layout/language-switcher";
 
 const ALL_VOICES: any[] = [];
 
@@ -149,14 +150,18 @@ export default function CommunityTestimonyPage() {
                 <Link key={link.href} href={link.href} className="text-sm font-bold text-muted-foreground hover:text-primary transition-colors">{link.label}</Link>
               )
             ))}
+            <LanguageSwitcher />
             <Button asChild className="rounded-xl font-bold bg-primary text-white h-10 px-6">
               <Link href="/login">Portal Login</Link>
             </Button>
           </nav>
 
-          <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsMobileNavOpen((open) => !open)} aria-label="Toggle community navigation">
-            {isMobileNavOpen ? <X className="w-6 h-6 text-primary" /> : <Menu className="w-6 h-6 text-primary" />}
-          </Button>
+          <div className="flex items-center gap-1 md:hidden">
+            <LanguageSwitcher />
+            <Button variant="ghost" size="icon" onClick={() => setIsMobileNavOpen((open) => !open)} aria-label="Toggle community navigation">
+              {isMobileNavOpen ? <X className="w-6 h-6 text-primary" /> : <Menu className="w-6 h-6 text-primary" />}
+            </Button>
+          </div>
         </div>
         {isMobileNavOpen && (
           <div className="md:hidden border-t border-primary/5 bg-white px-4 py-4 shadow-xl">

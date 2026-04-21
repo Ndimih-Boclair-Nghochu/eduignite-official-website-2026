@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { feedbackService } from "@/lib/api/services/feedback.service";
+import { useI18n } from "@/lib/i18n-context";
 
 const normalizeList = (payload: any) => {
   if (Array.isArray(payload)) return payload;
@@ -44,6 +45,7 @@ const STATUS_STYLE: Record<string, string> = {
 
 export default function FeedbackPage() {
   const { user } = useAuth();
+  const { translateText } = useI18n();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -81,10 +83,10 @@ export default function FeedbackPage() {
       feedbackService.createFeedback(data as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["my-feedbacks"] });
-      toast({ title: "Feedback Sent", description: "The platform administrator has received your message." });
+      toast({ title: translateText("Feedback Sent"), description: translateText("The platform administrator has received your message.") });
       setNewFeedback({ subject: "", message: "", priority: "MEDIUM" });
     },
-    onError: () => toast({ variant: "destructive", title: "Error", description: "Failed to send feedback." }),
+    onError: () => toast({ variant: "destructive", title: translateText("Error"), description: translateText("Failed to send feedback.") }),
   });
 
   // Resolve feedback
@@ -92,9 +94,9 @@ export default function FeedbackPage() {
     mutationFn: (id: string) => feedbackService.resolveFeedback(id, "Resolved by admin."),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["all-feedbacks"] });
-      toast({ title: "Feedback Resolved", description: "Ticket has been marked as resolved." });
+      toast({ title: translateText("Feedback Resolved"), description: translateText("Ticket has been marked as resolved.") });
     },
-    onError: () => toast({ variant: "destructive", title: "Error", description: "Failed to resolve feedback." }),
+    onError: () => toast({ variant: "destructive", title: translateText("Error"), description: translateText("Failed to resolve feedback.") }),
   });
 
   // --- Admin view ---
@@ -153,7 +155,7 @@ export default function FeedbackPage() {
                   </div>
                   <div className="pt-4 border-t border-accent/50 w-full">
                     <Badge className={cn("w-full justify-center py-1 font-black uppercase text-[9px]", STATUS_STYLE[fb.status] || "bg-amber-100 text-amber-700")}>
-                      {fb.status || "Pending"}
+                      {translateText(fb.status || "Pending")}
                     </Badge>
                   </div>
                 </div>
@@ -161,7 +163,7 @@ export default function FeedbackPage() {
                 <div className="flex-1 p-6 md:p-8 flex flex-col">
                   <div className="flex items-center gap-2 mb-4">
                     <Badge variant="secondary" className="bg-primary/5 text-primary border-primary/10 font-bold uppercase text-[10px]">
-                      {fb.subject}
+                      {translateText(fb.subject)}
                     </Badge>
                     <p className="text-[10px] text-muted-foreground flex items-center gap-1 ml-auto">
                       <Clock className="w-3 h-3" />
@@ -170,7 +172,7 @@ export default function FeedbackPage() {
                   </div>
 
                   <div className="bg-white/50 border border-accent rounded-2xl p-6 italic text-muted-foreground leading-relaxed flex-1">
-                    "{fb.message}"
+                    "{translateText(fb.message)}"
                   </div>
 
                   <div className="mt-6 pt-4 border-t flex justify-end">
@@ -180,7 +182,7 @@ export default function FeedbackPage() {
                       disabled={fb.status === "Resolved" || resolveMutation.isPending}
                     >
                       <CheckCircle2 className="w-4 h-4" />
-                      {fb.status === "Resolved" ? "Resolved" : "Resolve Ticket"}
+                      {fb.status === "Resolved" ? translateText("Resolved") : "Resolve Ticket"}
                     </Button>
                   </div>
                 </div>
@@ -229,7 +231,7 @@ export default function FeedbackPage() {
                   <SelectItem key={opt.value} value={opt.value}>
                     <div className="flex items-center gap-2">
                       <opt.icon className={cn("w-4 h-4", opt.color)} />
-                      <span>{opt.label}</span>
+                      <span>{translateText(opt.value) || opt.label}</span>
                     </div>
                   </SelectItem>
                 ))}
@@ -272,14 +274,14 @@ export default function FeedbackPage() {
               <CardContent className="p-5 space-y-2">
                 <div className="flex items-center justify-between">
                   <Badge variant="secondary" className="bg-primary/5 text-primary border-none font-bold uppercase text-[10px]">
-                    {fb.subject}
+                    {translateText(fb.subject)}
                   </Badge>
                   <Badge className={cn("text-[9px] font-black uppercase border-none", STATUS_STYLE[fb.status] || "bg-amber-100 text-amber-700")}>
-                    {fb.status || "Pending"}
+                    {translateText(fb.status || "Pending")}
                   </Badge>
                 </div>
                 {fb.message && (
-                  <p className="text-sm text-muted-foreground leading-relaxed">{fb.message}</p>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{translateText(fb.message)}</p>
                 )}
                 <p className="text-[10px] text-muted-foreground flex items-center gap-1">
                   <Clock className="w-3 h-3" />

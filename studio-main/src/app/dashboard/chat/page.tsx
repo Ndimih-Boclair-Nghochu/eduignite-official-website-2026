@@ -94,7 +94,7 @@ const getWebSocketBaseUrl = () => {
 
 export default function ChatPage() {
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t, translateText } = useI18n();
   const { toast } = useToast();
 
   const [selectedConv, setSelectedConv] = useState<any>(null);
@@ -345,8 +345,8 @@ export default function ChatPage() {
     ? participantStatuses[String(getParticipantId(directOtherParticipant))]
     : undefined;
   const conversationPresenceLabel = selectedConv?.conversation_type === "direct"
-    ? (directOtherParticipantStatus === "online" ? "Online" : wsConnected ? "Connected" : "Offline")
-    : (wsConnected ? "Live" : "Offline");
+    ? (directOtherParticipantStatus === "online" ? translateText("Online") : wsConnected ? translateText("Connected") : translateText("Offline"))
+    : (wsConnected ? translateText("Live") : translateText("Offline"));
 
   if (user?.role === "SUPER_ADMIN") {
     return (
@@ -466,7 +466,7 @@ export default function ChatPage() {
             {convsError && !isLoadingConvs && (
               <div className="p-4 text-center space-y-3">
                 <AlertCircle className="w-6 h-6 text-destructive mx-auto" />
-                <p className="text-xs font-bold text-destructive">Failed to load conversations</p>
+                <p className="text-xs font-bold text-destructive">{translateText("Failed to load conversations")}</p>
                 {convsErrorMsg && (
                   <p className="text-[10px] text-muted-foreground bg-destructive/5 rounded-lg p-2 text-left font-mono break-all">{convsErrorMsg}</p>
                 )}
@@ -478,7 +478,7 @@ export default function ChatPage() {
             {!isLoadingConvs && !convsError && conversations.length === 0 && (
               <div className="p-6 text-center space-y-2">
                 <MessageCircle className="w-8 h-8 text-primary/20 mx-auto" />
-                <p className="text-xs text-muted-foreground">No conversations yet</p>
+                <p className="text-xs text-muted-foreground">{t("noConversations")}</p>
                 <Button size="sm" variant="outline" onClick={handleOpenNewChat} className="gap-2 mt-2">
                   <Plus className="w-3 h-3" /> Start a chat
                 </Button>
@@ -512,7 +512,7 @@ export default function ChatPage() {
                         )}
                       </div>
                       <p className={cn("text-[10px] truncate", selectedConv?.id === conv.id ? "text-white/70" : "text-muted-foreground")}>
-                        {conv.last_message || "No messages yet"}
+                        {conv.last_message ? translateText(conv.last_message) : translateText("No messages yet")}
                       </p>
                     </div>
                   </button>
@@ -560,7 +560,7 @@ export default function ChatPage() {
                 {msgsError && !isLoadingMsgs && (
                   <div className="flex flex-col items-center py-8 gap-3 px-4">
                     <AlertCircle className="w-8 h-8 text-destructive/30" />
-                    <p className="text-xs font-bold text-destructive">Failed to load messages</p>
+                    <p className="text-xs font-bold text-destructive">{translateText("Failed to load messages")}</p>
                     {msgsErrorMsg && (
                       <p className="text-[10px] text-muted-foreground bg-destructive/5 rounded-lg p-2 w-full font-mono break-all">{msgsErrorMsg}</p>
                     )}
@@ -571,7 +571,7 @@ export default function ChatPage() {
                 )}
                 {wsError && (
                   <div className="mx-auto max-w-sm bg-amber-50 border border-amber-200 rounded-xl p-3 text-center space-y-1">
-                    <p className="text-[10px] font-black uppercase text-amber-700">WebSocket Error</p>
+                    <p className="text-[10px] font-black uppercase text-amber-700">{translateText("WebSocket Error")}</p>
                     <p className="text-[10px] text-amber-600 font-mono break-all">{wsError}</p>
                   </div>
                 )}
@@ -599,7 +599,7 @@ export default function ChatPage() {
                               : "bg-white border border-accent text-primary rounded-bl-sm shadow-sm",
                             msg._pending && "opacity-60"
                           )}>
-                            {msg.text}
+                            {translateText(msg.text)}
                           </div>
                           <p className={cn("text-[9px] text-muted-foreground px-1", isOwn && "text-right")}>
                             {msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}

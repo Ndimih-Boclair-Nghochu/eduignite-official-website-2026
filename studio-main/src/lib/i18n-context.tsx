@@ -160,10 +160,52 @@ const translations: TranslationDict = {
   draftTranscript: { en: "Draft Transcript", fr: "Releve de notes provisoire" },
 };
 
+const backendTextTranslations: TranslationDict = {
+  "network error": { en: "Network error", fr: "Erreur reseau" },
+  "invalid credentials": { en: "Invalid credentials", fr: "Identifiants invalides" },
+  "wrong password": { en: "Wrong password", fr: "Mot de passe incorrect" },
+  "matricule does not exist": { en: "Matricule does not exist", fr: "Le matricule n'existe pas" },
+  "you are not allowed to carry out this operation": {
+    en: "You are not allowed to carry out this operation",
+    fr: "Vous n'etes pas autorise a effectuer cette operation",
+  },
+  "failed to load conversations": { en: "Failed to load conversations", fr: "Impossible de charger les conversations" },
+  "failed to load messages": { en: "Failed to load messages", fr: "Impossible de charger les messages" },
+  "failed to send feedback": { en: "Failed to send feedback.", fr: "Impossible d'envoyer le feedback." },
+  "failed to resolve feedback": { en: "Failed to resolve feedback.", fr: "Impossible de resoudre le feedback." },
+  "error": { en: "Error", fr: "Erreur" },
+  "feedback sent": { en: "Feedback Sent", fr: "Feedback envoye" },
+  "feedback resolved": { en: "Feedback Resolved", fr: "Feedback resolu" },
+  "the platform administrator has received your message": {
+    en: "The platform administrator has received your message.",
+    fr: "L'administrateur de la plateforme a recu votre message.",
+  },
+  "ticket has been marked as resolved": {
+    en: "Ticket has been marked as resolved.",
+    fr: "Le ticket a ete marque comme resolu.",
+  },
+  "pending": { en: "Pending", fr: "En attente" },
+  "resolved": { en: "Resolved", fr: "Resolu" },
+  "in progress": { en: "In Progress", fr: "En cours" },
+  "technical error": { en: "Technical Error", fr: "Erreur technique" },
+  "feature suggestion": { en: "Feature Suggestion", fr: "Suggestion de fonctionnalite" },
+  "general appreciation": { en: "General Appreciation", fr: "Appreciation generale" },
+  "billing & subscription": { en: "Billing & Subscription", fr: "Facturation et abonnement" },
+  "administrative request": { en: "Administrative Request", fr: "Demande administrative" },
+  "other": { en: "Other", fr: "Autre" },
+  "no messages yet": { en: "No messages yet", fr: "Aucun message pour le moment" },
+  "online": { en: "Online", fr: "En ligne" },
+  "offline": { en: "Offline", fr: "Hors ligne" },
+  "connected": { en: "Connected", fr: "Connecte" },
+  "live": { en: "Live", fr: "En direct" },
+  "websocket error": { en: "WebSocket Error", fr: "Erreur WebSocket" },
+};
+
 interface I18nContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
   t: (key: string) => string;
+  translateText: (value?: string | null) => string;
 }
 
 const I18nContext = createContext<I18nContextType | undefined>(undefined);
@@ -184,10 +226,15 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const t = (key: string) => translations[key]?.[language] ?? key;
+  const translateText = (value?: string | null) => {
+    if (!value) return "";
+    const normalized = value.trim().toLowerCase().replace(/[.!?]+$/, "");
+    return backendTextTranslations[normalized]?.[language] ?? value;
+  };
 
   return (
     <div lang={language}>
-      <I18nContext.Provider value={{ language, setLanguage: handleSetLanguage, t }}>
+      <I18nContext.Provider value={{ language, setLanguage: handleSetLanguage, t, translateText }}>
         {children}
       </I18nContext.Provider>
     </div>

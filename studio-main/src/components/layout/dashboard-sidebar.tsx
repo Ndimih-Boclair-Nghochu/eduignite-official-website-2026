@@ -19,7 +19,6 @@ import {
   Building2,
   Heart,
   Globe,
-  Languages,
   MessageSquare,
   Megaphone,
   MessageCircle,
@@ -44,12 +43,6 @@ import {
   Medal
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 interface SidebarProps {
   onClose?: () => void;
@@ -62,7 +55,7 @@ const STAFF_ROLES: UserRole[] = ["TEACHER", "BURSAR", "LIBRARIAN"];
 export function DashboardSidebar({ onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user, logout, platformSettings } = useAuth();
-  const { t, language, setLanguage } = useI18n();
+  const { t, language } = useI18n();
 
   const isSuperAdmin = EXECUTIVE_ROLES.includes(user?.role as UserRole);
   const isDesigner = user?.role === "DESIGNER";
@@ -310,21 +303,6 @@ export function DashboardSidebar({ onClose }: SidebarProps) {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
-                  <Languages className="w-4 h-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setLanguage("en")} className={language === "en" ? "bg-accent" : ""}>
-                  English
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setLanguage("fr")} className={language === "fr" ? "bg-accent" : ""}>
-                  Français
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
             {onClose && (
               <Button variant="ghost" size="icon" className="text-white md:hidden" onClick={onClose}>
                 <X className="w-5 h-5" />

@@ -5,6 +5,7 @@ import { useAuth, type UserRole } from "@/lib/auth-context";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { DashboardSidebar } from "@/components/layout/dashboard-sidebar";
+import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import { 
   Menu, 
   Building2, 
@@ -198,6 +199,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   const tutorialUrl = platformSettings?.tutorialLinks?.[user.role as keyof typeof platformSettings.tutorialLinks] || "https://youtube.com";
+  const dashboardTitle = isPlatformExecutive
+    ? platformSettings.name || "Platform Board"
+    : user?.school?.shortName || user?.school?.name || "Institution";
 
   return (
     <div className="flex min-h-dvh flex-col md:flex-row bg-background">
@@ -222,20 +226,35 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
             ) : null}
             <span className="font-bold tracking-tight text-white truncate uppercase">
-              {isPlatformExecutive ? platformSettings.name : (user?.school?.shortName || user?.school?.name || "Institution")}
+              {dashboardTitle}
             </span>
           </div>
-          <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="text-white">
-                <Menu className="w-6 h-6" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="p-0 border-none w-[88vw] max-w-80">
-              <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
-              <DashboardSidebar onClose={() => setIsMobileMenuOpen(false)} />
-            </SheetContent>
-          </Sheet>
+          <div className="flex items-center gap-1">
+            <LanguageSwitcher tone="dark" />
+            <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="text-white">
+                  <Menu className="w-6 h-6" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="p-0 border-none w-[88vw] max-w-80">
+                <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+                <DashboardSidebar onClose={() => setIsMobileMenuOpen(false)} />
+              </SheetContent>
+            </Sheet>
+          </div>
+        </header>
+
+        <header className="hidden md:flex sticky top-0 z-20 items-center justify-between gap-4 border-b border-border/60 bg-background/95 px-8 py-3 backdrop-blur shrink-0">
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-muted-foreground">
+              Workspace Language
+            </p>
+            <p className="truncate text-sm font-black text-primary uppercase tracking-tight">
+              {dashboardTitle}
+            </p>
+          </div>
+          <LanguageSwitcher />
         </header>
 
         <main className="flex-1 overflow-y-auto">
