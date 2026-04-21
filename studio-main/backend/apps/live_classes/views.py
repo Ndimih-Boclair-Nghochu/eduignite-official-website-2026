@@ -73,9 +73,7 @@ class LiveClassViewSet(viewsets.ModelViewSet):
         qs.filter(
             status=LiveClassStatus.LIVE,
             start_time__lt=now - timezone.timedelta(minutes=1),
-        ).exclude(
-            start_time__gte=now - timezone.timedelta(minutes=1)
-        )
+        ).update(status=LiveClassStatus.ENDED)
 
         return qs
 
@@ -92,6 +90,9 @@ class LiveClassViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def perform_create(self, serializer):
+        if not self.request.user.school_id:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Your account is not assigned to a school.")
         serializer.save(
             teacher=self.request.user,
             school=self.request.user.school,

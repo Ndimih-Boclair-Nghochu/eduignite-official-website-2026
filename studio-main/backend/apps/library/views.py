@@ -21,9 +21,14 @@ class BookCategoryViewSet(viewsets.ModelViewSet):
     ordering_fields = ['name']
 
     def get_queryset(self):
-        return BookCategory.objects.filter(school=self.request.user.school)
+        if not self.request.user.school_id:
+            return BookCategory.objects.none()
+        return BookCategory.objects.filter(school_id=self.request.user.school_id)
 
     def perform_create(self, serializer):
+        if not self.request.user.school_id:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Your account is not assigned to a school.")
         serializer.save(school=self.request.user.school)
 
     def check_permissions(self, request):
@@ -42,7 +47,9 @@ class BookViewSet(viewsets.ModelViewSet):
     ordering = ['title']
 
     def get_queryset(self):
-        return Book.objects.filter(school=self.request.user.school, is_active=True)
+        if not self.request.user.school_id:
+            return Book.objects.none()
+        return Book.objects.filter(school_id=self.request.user.school_id, is_active=True)
 
     def get_serializer_class(self):
         if self.action == 'create' or self.action == 'update' or self.action == 'partial_update':
@@ -52,6 +59,9 @@ class BookViewSet(viewsets.ModelViewSet):
         return BookListSerializer
 
     def perform_create(self, serializer):
+        if not self.request.user.school_id:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Your account is not assigned to a school.")
         serializer.save(school=self.request.user.school)
 
     def check_permissions(self, request):
@@ -91,7 +101,7 @@ class BookViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def by_category(self, request):
         """Get books grouped by category"""
-        categories = BookCategory.objects.filter(school=request.user.school)
+        categories = BookCategory.objects.filter(school_id=request.user.school_id)
         result = {}
         for category in categories:
             books = self.get_queryset().filter(category=category)
@@ -109,14 +119,15 @@ class BookLoanViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.role in ['librarian', 'school_admin', 'executive']:
-            return BookLoan.objects.filter(school=user.school)
-        else:
-            return BookLoan.objects.filter(borrower=user)
+        if user.role in ['LIBRARIAN', 'SCHOOL_ADMIN', 'SUB_ADMIN', 'SUPER_ADMIN', 'CEO', 'CTO', 'COO']:
+            if not user.school_id:
+                return BookLoan.objects.none()
+            return BookLoan.objects.filter(school_id=user.school_id)
+        return BookLoan.objects.filter(borrower=user)
 
     def check_permissions(self, request):
         if self.action in ['create', 'destroy']:
-            if not (request.user.role in ['librarian', 'school_admin', 'executive']):
+            if request.user.role not in ['LIBRARIAN', 'SCHOOL_ADMIN', 'SUB_ADMIN', 'SUPER_ADMIN', 'CEO', 'CTO', 'COO']:
                 self.permission_denied(request)
         return super().check_permissions(request)
 
@@ -126,6 +137,8 @@ class BookLoanViewSet(viewsets.ModelViewSet):
         if request.user.role not in ['LIBRARIAN', 'SCHOOL_ADMIN', 'SUB_ADMIN', 'SUPER_ADMIN', 'CEO', 'CTO', 'COO']:
             return Response({'detail': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
 
+        if not request.user.school_id:
+            return Response({'detail': 'Your account is not assigned to a school.'}, status=status.HTTP_400_BAD_REQUEST)
         serializer = IssueLoanSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save(school=request.user.school, librarian=request.user)
@@ -160,7 +173,7 @@ class BookLoanViewSet(viewsets.ModelViewSet):
 
         today = timezone.now().date()
         loans = BookLoan.objects.filter(
-            school=request.user.school,
+            school_id=request.user.school_id,
             due_date__lt=today,
             returned_date__isnull=True,
             status='Active'
@@ -176,15 +189,15 @@ class BookLoanViewSet(viewsets.ModelViewSet):
 
         today = timezone.now().date()
         stats = {
-            'total_books': Book.objects.filter(school=request.user.school).count(),
-            'loans_today': BookLoan.objects.filter(school=request.user.school, issued_date=today).count(),
+            'total_books': Book.objects.filter(school_id=request.user.school_id).count(),
+            'loans_today': BookLoan.objects.filter(school_id=request.user.school_id, issued_date=today).count(),
             'overdue_loans': BookLoan.objects.filter(
-                school=request.user.school,
+                school_id=request.user.school_id,
                 due_date__lt=today,
                 returned_date__isnull=True,
                 status='Active'
             ).count(),
-            'low_stock_books': Book.objects.filter(school=request.user.school, available_copies__lt=3).count(),
+            'low_stock_books': Book.objects.filter(school_id=request.user.school_id, available_copies__lt=3).count(),
             'total_students': 0,
         }
         serializer = LibraryStatsSerializer(stats)

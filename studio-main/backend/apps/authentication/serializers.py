@@ -200,9 +200,14 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         write_only=True,
         validators=[validate_password],
     )
+    confirm_password = serializers.CharField(max_length=128, write_only=True)
 
     def validate_token(self, value):
-        """Validate token format and validity."""
         if not value:
             raise serializers.ValidationError('Token is required.')
         return value
+
+    def validate(self, data):
+        if data['new_password'] != data['confirm_password']:
+            raise serializers.ValidationError({'confirm_password': 'Passwords do not match.'})
+        return data

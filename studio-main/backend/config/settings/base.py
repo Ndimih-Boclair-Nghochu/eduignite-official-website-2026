@@ -224,7 +224,6 @@ SIMPLE_JWT = {
     'ISSUER': None,
     'JTI_CLAIM': 'jti',
     'TOKEN_TYPE_CLAIM': 'token_type',
-    'JTI_CLAIM': 'jti',
     'SLIDING_TOKEN_REFRESH_EXP_CLAIM': 'refresh_exp',
     'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5),
     'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
@@ -427,7 +426,7 @@ EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
 EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
 EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
 EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='eduignitecmr@gmail.com')
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='jjke ierb dwca ypkc')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='EduIgnite <eduignitecmr@gmail.com>')
 SERVER_EMAIL = config('SERVER_EMAIL', default='eduignitecmr@gmail.com')
 FRONTEND_URL = config('FRONTEND_URL', default='https://eduignite.com')

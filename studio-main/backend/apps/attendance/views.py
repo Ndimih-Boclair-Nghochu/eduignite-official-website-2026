@@ -36,9 +36,10 @@ class AttendanceSessionViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         if request.user.role != 'TEACHER':
             raise PermissionDenied("Only teachers can create attendance sessions.")
-
+        if not request.user.school_id:
+            raise PermissionDenied("Your account is not assigned to a school.")
         request.data['teacher'] = request.user.id
-        request.data['school'] = request.user.school.id
+        request.data['school'] = request.user.school_id
         return super().create(request, *args, **kwargs)
 
 
@@ -282,8 +283,9 @@ class TeacherAttendanceViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
             raise PermissionDenied("Only school administrators can record teacher attendance.")
-
-        request.data['school'] = request.user.school.id
+        if not request.user.school_id:
+            raise PermissionDenied("Your account is not assigned to a school.")
+        request.data['school'] = request.user.school_id
         request.data['noted_by'] = request.user.id
         return super().create(request, *args, **kwargs)
 

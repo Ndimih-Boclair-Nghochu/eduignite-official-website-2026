@@ -38,8 +38,9 @@ class SubjectViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
             raise PermissionDenied("Only school administrators can create subjects.")
-
-        request.data['school'] = request.user.school.id
+        if not request.user.school_id:
+            raise PermissionDenied("Your account is not assigned to a school.")
+        request.data['school'] = request.user.school_id
         return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
@@ -67,8 +68,9 @@ class SequenceViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
             raise PermissionDenied("Only school administrators can create sequences.")
-
-        request.data['school'] = request.user.school.id
+        if not request.user.school_id:
+            raise PermissionDenied("Your account is not assigned to a school.")
+        request.data['school'] = request.user.school_id
         return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
@@ -104,9 +106,10 @@ class GradeViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         if request.user.role != 'TEACHER':
             raise PermissionDenied("Only teachers can create grades.")
-
+        if not request.user.school_id:
+            raise PermissionDenied("Your account is not assigned to a school.")
         request.data['teacher'] = request.user.id
-        request.data['school'] = request.user.school.id
+        request.data['school'] = request.user.school_id
         return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
