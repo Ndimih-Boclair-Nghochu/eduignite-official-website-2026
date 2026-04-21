@@ -144,6 +144,8 @@ export {
   useBlog,
   useCreateBlog,
   usePublishBlog,
+  useUpdateBlog,
+  useDeleteBlog,
   useBlogComments,
   useCreateBlogComment,
 } from './useCommunity';

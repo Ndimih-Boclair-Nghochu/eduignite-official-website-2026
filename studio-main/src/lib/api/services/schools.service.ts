@@ -67,8 +67,8 @@ export const schoolsService = {
     };
   },
 
-  async deleteSchool(id: string): Promise<void> {
-    await apiClient.delete(API.SCHOOLS.DETAIL(id));
+  async deleteSchool(id: string, confirmation?: { matricule: string; password: string }): Promise<void> {
+    await apiClient.delete(API.SCHOOLS.DETAIL(id), { data: confirmation ?? {} });
   },
 
   async toggleSchoolStatus(id: string, body?: Record<string, unknown>): Promise<School> {

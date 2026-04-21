@@ -40,7 +40,7 @@ class Testimony(TimeStampedModel):
 class CommunityBlog(TimeStampedModel):
     author = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name='community_blogs')
     title = models.CharField(max_length=255)
-    image = models.URLField(max_length=2000, null=True, blank=True)
+    image = models.TextField(null=True, blank=True)
     paragraphs = models.JSONField(default=list)
     is_published = models.BooleanField(default=False)
     published_at = models.DateTimeField(null=True, blank=True)

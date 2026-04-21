@@ -36,6 +36,32 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
+def verify_destructive_confirmation(request):
+    matricule = str(request.data.get('matricule', '')).strip()
+    password = str(request.data.get('password', ''))
+
+    if not matricule:
+        return Response({'detail': 'Matricule confirmation is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not password:
+        return Response({'detail': 'Password confirmation is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        confirmed_user = User.objects.get(matricule=matricule)
+    except User.DoesNotExist:
+        return Response({'detail': 'Matricule does not exist.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if confirmed_user.id != request.user.id:
+        return Response(
+            {'detail': 'This matricule does not belong to the signed-in account.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if not confirmed_user.check_password(password):
+        return Response({'detail': 'Wrong password.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    return None
+
+
 def sync_primary_founders():
     founder_defaults = {
         'CEO': {'founder_title': 'Chief Executive Officer & Co-Founder', 'primary_share_percentage': '40.00'},
@@ -182,6 +208,9 @@ class UserViewSet(viewsets.ModelViewSet):
     )
     def destroy(self, request, *args, **kwargs):
         """Delete user (executives only)."""
+        confirmation_error = verify_destructive_confirmation(request)
+        if confirmation_error:
+            return confirmation_error
         user = self.get_object()
         if user.role in ['CEO', 'CTO']:
             return Response(
@@ -380,6 +409,9 @@ class FounderProfileViewSet(viewsets.GenericViewSet):
                 {'detail': 'Primary founders cannot be removed from the system.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        confirmation_error = verify_destructive_confirmation(request)
+        if confirmation_error:
+            return confirmation_error
         founder.user.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

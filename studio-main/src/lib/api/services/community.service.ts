@@ -1,5 +1,6 @@
 import { apiClient } from '../client';
 import { API } from '../endpoints';
+import { resolveMediaUrl } from '@/lib/media';
 import {
   Testimony,
   CommunityBlog,
@@ -7,6 +8,17 @@ import {
   PaginatedResponse,
   ListParams,
 } from '../types';
+
+const normalizeBlog = (blog: any): CommunityBlog => ({
+  ...blog,
+  image: resolveMediaUrl(blog?.image) || blog?.image,
+  author: blog?.author
+    ? {
+        ...blog.author,
+        avatar: resolveMediaUrl(blog.author.avatar) || blog.author.avatar,
+      }
+    : blog?.author,
+});
 
 export const communityService = {
   async getTestimonies(params?: ListParams): Promise<PaginatedResponse<Testimony>> {
@@ -47,33 +59,36 @@ export const communityService = {
 
   async getBlogs(params?: ListParams): Promise<PaginatedResponse<CommunityBlog>> {
     const { data } = await apiClient.get(API.COMMUNITY.BLOGS, { params });
-    return data;
+    return {
+      ...data,
+      results: (data?.results ?? []).map(normalizeBlog),
+    };
   },
 
   async getBlog(idOrSlug: string): Promise<CommunityBlog> {
     const { data } = await apiClient.get(API.COMMUNITY.BLOG_DETAIL(idOrSlug));
-    return data;
+    return normalizeBlog(data);
   },
 
   async createBlog(blogData: Partial<CommunityBlog>): Promise<CommunityBlog> {
     const { data } = await apiClient.post(API.COMMUNITY.BLOGS, blogData);
-    return data;
+    return normalizeBlog(data);
   },
 
   async updateBlog(id: string, blogData: Partial<CommunityBlog>): Promise<CommunityBlog> {
     const { data } = await apiClient.patch(API.COMMUNITY.BLOG_DETAIL(id), blogData);
-    return data;
+    return normalizeBlog(data);
   },
 
   async publishBlog(idOrPayload: string | { id: string }): Promise<CommunityBlog> {
     const id = typeof idOrPayload === 'string' ? idOrPayload : idOrPayload.id;
     const { data } = await apiClient.post(API.COMMUNITY.PUBLISH_BLOG(id), {});
-    return data;
+    return normalizeBlog(data);
   },
 
   async viewBlog(id: string): Promise<CommunityBlog> {
     const { data } = await apiClient.post(API.COMMUNITY.VIEW_BLOG(id), {});
-    return data;
+    return normalizeBlog(data);
   },
 
   async deleteBlog(id: string): Promise<void> {

@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from django.contrib.auth import get_user_model
 from django.db.models import Count
 from django.conf import settings as django_settings
 from drf_spectacular.utils import extend_schema
@@ -21,6 +22,33 @@ from .serializers import (
 from .permissions import IsExecutiveOrSchoolAdmin, IsExecutive
 
 logger = logging.getLogger(__name__)
+User = get_user_model()
+
+
+def verify_destructive_confirmation(request):
+    matricule = str(request.data.get('matricule', '')).strip()
+    password = str(request.data.get('password', ''))
+
+    if not matricule:
+        return Response({'detail': 'Matricule confirmation is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not password:
+        return Response({'detail': 'Password confirmation is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        confirmed_user = User.objects.get(matricule=matricule)
+    except User.DoesNotExist:
+        return Response({'detail': 'Matricule does not exist.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if confirmed_user.id != request.user.id:
+        return Response(
+            {'detail': 'This matricule does not belong to the signed-in account.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if not confirmed_user.check_password(password):
+        return Response({'detail': 'Wrong password.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    return None
 
 
 class SchoolViewSet(viewsets.ModelViewSet):
@@ -174,6 +202,9 @@ class SchoolViewSet(viewsets.ModelViewSet):
     )
     def destroy(self, request, *args, **kwargs):
         """Delete school (executives only)."""
+        confirmation_error = verify_destructive_confirmation(request)
+        if confirmation_error:
+            return confirmation_error
         return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=['post'], permission_classes=[IsExecutiveOrSchoolAdmin], url_path='upload-logo')

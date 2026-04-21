@@ -24,7 +24,8 @@ import {
   FileText,
   Clock,
   ChevronRight,
-  Heart
+  Heart,
+  Menu
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
+import { getApiErrorMessage } from "@/lib/api/errors";
+import { resolveMediaUrl } from "@/lib/media";
 
 const ALL_VOICES: any[] = [];
 
@@ -53,6 +56,7 @@ export default function CommunityTestimonyPage() {
   const [mounted, setMounted] = useState(false);
   const { testimonials, addOrder, publicEvents, communityBlogs, platformSettings } = useAuth();
   const { toast } = useToast();
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   
   const [isSubmitting, setIsProcessing] = useState(false);
   const [formData, setFormData] = useState({
@@ -95,7 +99,7 @@ export default function CommunityTestimonyPage() {
       setIsProcessing(false);
       toast({
         title: "Submission Failed",
-        description: "We could not submit your activation request right now.",
+        description: getApiErrorMessage(error, "We could not submit your activation request right now."),
         variant: "destructive",
       });
     }
@@ -104,6 +108,14 @@ export default function CommunityTestimonyPage() {
   if (!mounted) return null;
 
   const approvedTestimonials = testimonials.filter(t => t.status === 'approved');
+  const platformLogo = resolveMediaUrl(platformSettings.logo);
+  const latestBlogs = communityBlogs.slice(0, 3);
+  const navLinks = [
+    { href: "/login", label: "Home" },
+    { href: "#logs", label: "Strategic Logs" },
+    { href: "#events", label: "Highlights" },
+    { href: "#testimonies", label: "Community" },
+  ];
 
   return (
     <div className="min-h-screen bg-[#F0F2F5] selection:bg-secondary selection:text-primary">
@@ -112,7 +124,11 @@ export default function CommunityTestimonyPage() {
         <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
           <Link href="/login" className="flex items-center gap-3 group">
             <div className="bg-primary p-2 rounded-xl shadow-lg transition-transform group-hover:rotate-3">
-              <Building2 className="w-6 h-6 text-white" />
+              {platformLogo ? (
+                <img src={platformLogo} alt={platformSettings.name} className="w-6 h-6 object-contain" />
+              ) : (
+                <Building2 className="w-6 h-6 text-white" />
+              )}
             </div>
             <span className="text-xl font-black text-primary font-headline tracking-tighter">
               {platformSettings.name} Community
@@ -120,19 +136,38 @@ export default function CommunityTestimonyPage() {
           </Link>
 
           <nav className="hidden md:flex items-center gap-8">
-            <Link href="/login" className="text-sm font-bold text-muted-foreground hover:text-primary transition-colors">Home</Link>
-            <a href="#logs" className="text-sm font-bold text-muted-foreground hover:text-primary transition-colors">Strategic Logs</a>
-            <a href="#events" className="text-sm font-bold text-muted-foreground hover:text-primary transition-colors">Highlights</a>
-            <a href="#testimonies" className="text-sm font-bold text-muted-foreground hover:text-primary transition-colors">Community</a>
+            {navLinks.map((link) => (
+              link.href.startsWith("#") ? (
+                <a key={link.href} href={link.href} className="text-sm font-bold text-muted-foreground hover:text-primary transition-colors">{link.label}</a>
+              ) : (
+                <Link key={link.href} href={link.href} className="text-sm font-bold text-muted-foreground hover:text-primary transition-colors">{link.label}</Link>
+              )
+            ))}
             <Button asChild className="rounded-xl font-bold bg-primary text-white h-10 px-6">
               <Link href="/login">Portal Login</Link>
             </Button>
           </nav>
 
-          <Button variant="ghost" size="icon" className="md:hidden">
-            <Users className="w-6 h-6 text-primary" />
+          <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsMobileNavOpen((open) => !open)} aria-label="Toggle community navigation">
+            {isMobileNavOpen ? <X className="w-6 h-6 text-primary" /> : <Menu className="w-6 h-6 text-primary" />}
           </Button>
         </div>
+        {isMobileNavOpen && (
+          <div className="md:hidden border-t border-primary/5 bg-white px-4 py-4 shadow-xl">
+            <nav className="max-w-7xl mx-auto grid gap-2">
+              {navLinks.map((link) => (
+                link.href.startsWith("#") ? (
+                  <a key={link.href} href={link.href} onClick={() => setIsMobileNavOpen(false)} className="rounded-xl px-4 py-3 text-sm font-black uppercase tracking-widest text-primary hover:bg-primary/5">{link.label}</a>
+                ) : (
+                  <Link key={link.href} href={link.href} onClick={() => setIsMobileNavOpen(false)} className="rounded-xl px-4 py-3 text-sm font-black uppercase tracking-widest text-primary hover:bg-primary/5">{link.label}</Link>
+                )
+              ))}
+              <Button asChild className="mt-2 h-12 rounded-xl font-black uppercase tracking-widest text-xs">
+                <Link href="/login">Portal Login</Link>
+              </Button>
+            </nav>
+          </div>
+        )}
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-16 space-y-32">
@@ -175,7 +210,7 @@ export default function CommunityTestimonyPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-              {communityBlogs.map((blog) => (
+              {latestBlogs.map((blog) => (
                 <Card key={blog.id} className="border-none shadow-xl rounded-[2.5rem] overflow-hidden bg-white group transition-all duration-500 hover:shadow-2xl hover:-translate-y-1 flex flex-col">
                   <div className="aspect-[16/10] w-full overflow-hidden relative">
                     {blog.image ? (
@@ -197,7 +232,7 @@ export default function CommunityTestimonyPage() {
                     <div className="flex items-center gap-3 pt-2 border-t border-accent/50">
                       <Avatar className="h-10 w-10 border-2 border-white shadow-md">
                         <AvatarImage src={blog.senderAvatar} />
-                        <AvatarFallback className="bg-primary text-white font-bold">{blog.senderName.charAt(0)}</AvatarFallback>
+                        <AvatarFallback className="bg-primary text-white font-bold">{(blog.senderName || "E").charAt(0)}</AvatarFallback>
                       </Avatar>
                       <div className="overflow-hidden">
                         <p className="font-black text-primary text-xs uppercase truncate">{blog.senderName}</p>
@@ -218,6 +253,15 @@ export default function CommunityTestimonyPage() {
                 </Card>
               ))}
             </div>
+            {communityBlogs.length > 3 && (
+              <div className="flex justify-center">
+                <Button asChild variant="outline" className="h-14 rounded-2xl border-primary/10 bg-white px-8 font-black uppercase tracking-widest text-xs text-primary">
+                  <Link href="/community/logs">
+                    See More Strategic Logs <ArrowRight className="ml-2 w-4 h-4" />
+                  </Link>
+                </Button>
+              </div>
+            )}
           </section>
         )}
 
@@ -311,7 +355,11 @@ export default function CommunityTestimonyPage() {
           <div className="text-center space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-1000">
             <div className="flex flex-col items-center gap-6 mb-4">
               <div className="bg-primary p-5 rounded-[2.5rem] shadow-2xl border-4 border-white transition-transform hover:scale-110">
-                <Building2 className="w-14 h-14 text-secondary" />
+                {platformLogo ? (
+                  <img src={platformLogo} alt={platformSettings.name} className="w-14 h-14 object-contain" />
+                ) : (
+                  <Building2 className="w-14 h-14 text-secondary" />
+                )}
               </div>
               <h2 className="text-5xl md:text-6xl font-black text-primary uppercase tracking-tighter leading-none">{platformSettings.name}</h2>
             </div>

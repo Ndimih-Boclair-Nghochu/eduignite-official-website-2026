@@ -26,6 +26,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { fileToDataUrl, getApiErrorMessage } from "@/lib/api/errors";
 
 export default function LogPostPage() {
   const { user, addCommunityBlog } = useAuth();
@@ -33,6 +34,7 @@ export default function LogPostPage() {
   const { toast } = useToast();
   
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isReadingImage, setIsReadingImage] = useState(false);
   const [title, setTitle] = useState("");
   const [image, setImage] = useState("");
   const [paragraphs, setParagraphs] = useState<string[]>([""]);
@@ -50,6 +52,22 @@ export default function LogPostPage() {
     const updated = [...paragraphs];
     updated[index] = value;
     setParagraphs(updated);
+  };
+
+  const handleImageFileChange = async (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ variant: "destructive", title: "Invalid Image", description: "Please select a valid image file." });
+      return;
+    }
+    setIsReadingImage(true);
+    try {
+      setImage(await fileToDataUrl(file));
+    } catch (error) {
+      toast({ variant: "destructive", title: "Image Upload Failed", description: getApiErrorMessage(error, "Could not read that image file.") });
+    } finally {
+      setIsReadingImage(false);
+    }
   };
 
   const handlePublish = async () => {
@@ -82,7 +100,7 @@ export default function LogPostPage() {
       setParagraphs([""]);
     } catch (error) {
       setIsProcessing(false);
-      toast({ variant: "destructive", title: "Publish Failed", description: "We could not publish this strategic log right now." });
+      toast({ variant: "destructive", title: "Publish Failed", description: getApiErrorMessage(error, "We could not publish this strategic log right now.") });
     }
   };
 
@@ -126,12 +144,21 @@ export default function LogPostPage() {
                 <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1 flex items-center gap-2">
                   <ImageIcon className="w-3.5 h-3.5" /> Feature Image URL (Optional)
                 </Label>
-                <Input 
-                  value={image}
-                  onChange={(e) => setImage(e.target.value)}
-                  placeholder="https://images.unsplash.com/..."
-                  className="h-12 bg-accent/30 border-none rounded-xl"
-                />
+                <div className="grid gap-3">
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleImageFileChange(e.target.files?.[0])}
+                    className="h-12 bg-accent/30 border-none rounded-xl file:mr-4 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:text-xs file:font-bold file:text-white"
+                    disabled={isReadingImage}
+                  />
+                  <Input
+                    value={image}
+                    onChange={(e) => setImage(e.target.value)}
+                    placeholder="Or paste an image URL / data URL..."
+                    className="h-12 bg-accent/30 border-none rounded-xl"
+                  />
+                </div>
               </div>
 
               {/* Dynamic Paragraphs */}
@@ -173,7 +200,7 @@ export default function LogPostPage() {
               <Button 
                 className="w-full h-16 rounded-2xl shadow-xl font-black uppercase text-sm gap-3 bg-primary text-white hover:bg-primary/90 transition-all active:scale-95" 
                 onClick={handlePublish}
-                disabled={isProcessing || !title.trim() || paragraphs.every(p => !p.trim())}
+                disabled={isProcessing || isReadingImage || !title.trim() || paragraphs.every(p => !p.trim())}
               >
                 {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                 Publish to Community Feed

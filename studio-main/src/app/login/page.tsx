@@ -42,6 +42,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { authService } from "@/lib/api/services/auth.service";
+import { getApiErrorMessage } from "@/lib/api/errors";
 
 type AuthMode = "login" | "activate" | "forgot" | "otp" | "reset" | "success";
 
@@ -88,8 +89,7 @@ export default function LoginPage() {
       await login(matricule, authData.password);
       toast({ title: t("welcomeBack"), description: t("connectedToLiveBackend") });
     } catch (error: any) {
-      const errorMessage =
-        error.response?.data?.message || error.response?.data?.detail || error.message || t("loginFailedTryAgain");
+      const errorMessage = getApiErrorMessage(error, t("loginFailedTryAgain"));
       toast({
         variant: "destructive",
         title: t("authFailed"),
@@ -121,8 +121,7 @@ export default function LoginPage() {
           await login(authData.matricule, authData.password);
         }
       } catch (error: any) {
-        const errorMessage =
-          error.response?.data?.message || error.response?.data?.detail || error.message || t("invalidCredentials");
+        const errorMessage = getApiErrorMessage(error, t("invalidCredentials"));
         toast({
           variant: "destructive",
           title: t("authFailed"),
@@ -306,7 +305,7 @@ export default function LoginPage() {
                           required
                           autoComplete="off"
                           disabled={isProcessing}
-                          className="h-14 bg-accent/30 border-none rounded-2xl focus-visible:ring-primary font-black uppercase text-center text-xl shadow-inner transition-all focus:bg-white"
+                          className="h-14 bg-accent/30 border-none rounded-2xl focus-visible:ring-primary font-black text-center text-xl shadow-inner transition-all focus:bg-white"
                           value={authData.matricule}
                           onChange={(e) =>
                             setAuthData({ ...authData, matricule: e.target.value })

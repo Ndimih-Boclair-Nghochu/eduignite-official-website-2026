@@ -46,6 +46,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getApiErrorMessage } from "@/lib/api/errors";
 
 const EXECUTIVE_ORDER = ["CEO", "CTO", "SUPER_ADMIN", "COO", "INV", "DESIGNER"];
 const FOUNDER_ROLE_OPTIONS = [
@@ -148,6 +149,8 @@ export default function FoundersManagementPage() {
   const [form, setForm] = useState<FounderFormState>(EMPTY_FORM);
   const [shareForm, setShareForm] = useState<ShareFormState>(EMPTY_SHARE_FORM);
   const [selectedFounder, setSelectedFounder] = useState<FounderProfile | null>(null);
+  const [founderPendingDelete, setFounderPendingDelete] = useState<FounderProfile | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState({ matricule: "", password: "" });
 
   const sortedFounders = useMemo(
     () =>
@@ -331,18 +334,36 @@ export default function FoundersManagementPage() {
       });
       return;
     }
+    setFounderPendingDelete(founder);
+    setDeleteConfirmation({ matricule: "", password: "" });
+  };
 
+  const handleConfirmFounderDelete = async () => {
+    if (!founderPendingDelete) return;
+    if (!deleteConfirmation.matricule.trim() || !deleteConfirmation.password) {
+      toast({
+        variant: "destructive",
+        title: "Confirmation Required",
+        description: "Enter your matricule and password before removing this founder.",
+      });
+      return;
+    }
     try {
-      await deleteFounderMutation.mutateAsync(founder.id);
+      await deleteFounderMutation.mutateAsync({
+        id: founderPendingDelete.id,
+        confirmation: deleteConfirmation,
+      });
       toast({
         title: "Founder Removed",
-        description: `${founder.name} was removed from the system.`,
+        description: `${founderPendingDelete.name} was removed from the system.`,
       });
+      setFounderPendingDelete(null);
+      setDeleteConfirmation({ matricule: "", password: "" });
     } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Removal failed",
-        description: error?.response?.data?.detail || "We could not remove this founder right now.",
+        description: getApiErrorMessage(error, "We could not remove this founder right now."),
       });
     }
   };
@@ -777,6 +798,43 @@ export default function FoundersManagementPage() {
             >
               {addSharesMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PieChart className="mr-2 h-4 w-4" />}
               Add Shares
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!founderPendingDelete} onOpenChange={(open) => !open && setFounderPendingDelete(null)}>
+        <DialogContent className="max-w-md rounded-[2rem]">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black uppercase text-destructive">Confirm Founder Removal</DialogTitle>
+            <DialogDescription>
+              This will permanently remove {founderPendingDelete?.name}. Confirm with your own matricule and password.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <Field label="Your Matricule" htmlFor="founder-delete-matricule">
+              <Input
+                id="founder-delete-matricule"
+                value={deleteConfirmation.matricule}
+                onChange={(event) => setDeleteConfirmation((prev) => ({ ...prev, matricule: event.target.value }))}
+                placeholder="Enter your matricule exactly"
+              />
+            </Field>
+            <Field label="Your Password" htmlFor="founder-delete-password">
+              <Input
+                id="founder-delete-password"
+                type="password"
+                value={deleteConfirmation.password}
+                onChange={(event) => setDeleteConfirmation((prev) => ({ ...prev, password: event.target.value }))}
+                placeholder="Enter your password"
+              />
+            </Field>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFounderPendingDelete(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleConfirmFounderDelete} disabled={deleteFounderMutation.isPending}>
+              {deleteFounderMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+              Remove Founder
             </Button>
           </DialogFooter>
         </DialogContent>

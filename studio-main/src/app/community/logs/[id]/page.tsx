@@ -17,18 +17,38 @@ import { Card } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { communityService } from "@/lib/api/services/community.service";
+import { resolveMediaUrl } from "@/lib/media";
 
 export default function BlogDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { communityBlogs, platformSettings } = useAuth();
   const [blog, setBlog] = useState<any>(null);
+  const platformLogo = resolveMediaUrl(platformSettings.logo);
 
   useEffect(() => {
     const found = communityBlogs.find(b => b.id === params.id);
     if (found) {
       setBlog(found);
+      return;
     }
+    if (!params.id) return;
+
+    communityService.viewBlog(String(params.id))
+      .then((record: any) => {
+        setBlog({
+          id: record.id,
+          title: record.title,
+          senderName: record.author?.name || "EduIgnite Board",
+          senderRole: record.author?.role || "Executive",
+          senderAvatar: resolveMediaUrl(record.author?.avatar),
+          image: resolveMediaUrl(record.image),
+          paragraphs: Array.isArray(record.paragraphs) ? record.paragraphs : [],
+          createdAt: record.created_at,
+        });
+      })
+      .catch(() => setBlog(null));
   }, [params.id, communityBlogs]);
 
   if (!blog) {
@@ -55,7 +75,11 @@ export default function BlogDetailPage() {
           
           <div className="flex items-center gap-3">
             <div className="bg-primary p-1.5 rounded-lg shadow-lg">
-              <Building2 className="w-5 h-5 text-white" />
+              {platformLogo ? (
+                <img src={platformLogo} alt={platformSettings.name} className="w-5 h-5 object-contain" />
+              ) : (
+                <Building2 className="w-5 h-5 text-white" />
+              )}
             </div>
             <span className="text-sm font-black text-primary font-headline tracking-tighter uppercase">
               {platformSettings.name} Strategic Hub
@@ -77,7 +101,7 @@ export default function BlogDetailPage() {
           <div className="flex items-center justify-center gap-4 text-xs font-bold text-muted-foreground">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-secondary" />
-              {new Date(blog.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}
+              {new Date(blog.createdAt || Date.now()).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}
             </div>
             <span className="opacity-30">|</span>
             <div className="flex items-center gap-2">
@@ -97,7 +121,7 @@ export default function BlogDetailPage() {
         {/* CONTENT */}
         <Card className="border-none shadow-xl rounded-[3rem] bg-white p-8 md:p-16">
           <div className="space-y-8 max-w-2xl mx-auto">
-            {blog.paragraphs.map((p: string, i: number) => (
+            {(blog.paragraphs || []).map((p: string, i: number) => (
               <p key={i} className="text-xl text-muted-foreground leading-relaxed font-medium first-letter:text-5xl first-letter:font-black first-letter:text-primary first-letter:mr-2">
                 {p}
               </p>
@@ -108,7 +132,7 @@ export default function BlogDetailPage() {
             <div className="flex items-center gap-5">
               <Avatar className="h-20 w-20 border-4 border-white shadow-2xl ring-1 ring-primary/5">
                 <AvatarImage src={blog.senderAvatar} />
-                <AvatarFallback className="bg-primary text-white font-bold">{blog.senderName.charAt(0)}</AvatarFallback>
+                <AvatarFallback className="bg-primary text-white font-bold">{(blog.senderName || "E").charAt(0)}</AvatarFallback>
               </Avatar>
               <div>
                 <p className="font-black text-primary text-2xl uppercase leading-none mb-1">{blog.senderName}</p>

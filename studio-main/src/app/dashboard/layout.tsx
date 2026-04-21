@@ -44,6 +44,7 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { resolveMediaUrl } from "@/lib/media";
 import { getLicenseAccessState } from "@/lib/license";
+import { getApiErrorMessage } from "@/lib/api/errors";
 
 const EXECUTIVE_ROLES: UserRole[] = ["SUPER_ADMIN", "CEO", "CTO", "COO", "INV", "DESIGNER"];
 
@@ -95,12 +96,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           description: "Your story has been submitted for review.",
         });
       })
-      .catch(() => {
+      .catch((error) => {
         setIsSubmittingTestimony(false);
         toast({
           variant: "destructive",
           title: "Submission Failed",
-          description: "We could not submit your testimony right now.",
+          description: getApiErrorMessage(error, "We could not submit your testimony right now."),
         });
       });
   };
@@ -129,12 +130,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           description: "Thank you for supporting our institutional vision!",
         });
       })
-      .catch(() => {
+      .catch((error) => {
         setIsSubmittingSupport(false);
         toast({
           variant: "destructive",
           title: "Contribution Failed",
-          description: "We could not record your support contribution right now.",
+          description: getApiErrorMessage(error, "We could not record your support contribution right now."),
         });
       });
   };
@@ -154,6 +155,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const licenseState = getLicenseAccessState(user, platformSettings as any);
   const isSubscriptionPage = pathname === "/dashboard/subscription";
   const schoolLogo = resolveMediaUrl(user?.school?.logo);
+  const platformLogo = resolveMediaUrl(platformSettings.logo);
 
   if (licenseState.restrictionApplies && !isPlatformExecutive && !isSubscriptionPage) {
     return (
@@ -212,7 +214,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
             ) : isPlatformExecutive ? (
               <div className="bg-secondary p-1 rounded-lg shrink-0">
-                <Building2 className="w-4 h-4 text-primary" />
+                {platformLogo ? (
+                  <img src={platformLogo} alt={platformSettings.name} className="w-4 h-4 object-contain" />
+                ) : (
+                  <Building2 className="w-4 h-4 text-primary" />
+                )}
               </div>
             ) : null}
             <span className="font-bold tracking-tight text-white truncate uppercase">

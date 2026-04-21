@@ -129,6 +129,14 @@ class CommunityBlogViewSet(viewsets.ModelViewSet):
             }
         serializer.save(author=self.request.user, **publish_kwargs)
 
+    def create(self, request, *args, **kwargs):
+        """Create a strategic log and return the full saved record."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        detail_serializer = CommunityBlogDetailSerializer(serializer.instance, context={'request': request})
+        return Response(detail_serializer.data, status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=['post'])
     def publish(self, request, pk=None):
         """Publish a blog (executive only)"""

@@ -120,8 +120,12 @@ export function useDeleteSchool() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) => schoolsService.deleteSchool(id),
-    onSuccess: (_, id) => {
+    mutationFn: (input: string | { id: string; confirmation: { matricule: string; password: string } }) =>
+      typeof input === 'string'
+        ? schoolsService.deleteSchool(input)
+        : schoolsService.deleteSchool(input.id, input.confirmation),
+    onSuccess: (_, input) => {
+      const id = typeof input === 'string' ? input : input.id;
       queryClient.removeQueries({ queryKey: schoolsKeys.detail(id) });
       queryClient.invalidateQueries({ queryKey: schoolsKeys.lists() });
     },

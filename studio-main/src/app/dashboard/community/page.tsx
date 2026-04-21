@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useI18n } from "@/lib/i18n-context";
-import { useBlogs, useCreateBlog, usePublishBlog, useCreateBlogComment, usePendingTestimonies, useApproveTestimony, useRejectTestimony } from "@/lib/hooks";
+import { useBlogs, useCreateBlog, usePublishBlog, useUpdateBlog, useDeleteBlog, useCreateBlogComment, usePendingTestimonies, useApproveTestimony, useRejectTestimony } from "@/lib/hooks";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -26,10 +26,12 @@ import {
   Clock,
   CheckCircle2,
   Trash2,
-  FileText
+  FileText,
+  Pencil
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { fileToDataUrl, getApiErrorMessage } from "@/lib/api/errors";
 
 export default function CommunityPage() {
   const { user } = useAuth();
@@ -44,6 +46,8 @@ export default function CommunityPage() {
 
   const createBlogMutation = useCreateBlog();
   const publishBlogMutation = usePublishBlog();
+  const updateBlogMutation = useUpdateBlog();
+  const deleteBlogMutation = useDeleteBlog();
   const createCommentMutation = useCreateBlogComment();
   const approveTestimonyMutation = useApproveTestimony();
   const rejectTestimonyMutation = useRejectTestimony();
@@ -51,6 +55,8 @@ export default function CommunityPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBlog, setSelectedBlog] = useState<any>(null);
   const [isCreatingBlog, setIsCreatingBlog] = useState(false);
+  const [editingBlog, setEditingBlog] = useState<any>(null);
+  const [isReadingImage, setIsReadingImage] = useState(false);
   const [commentText, setCommentText] = useState("");
 
   const [newBlogData, setNewBlogData] = useState({
@@ -67,33 +73,71 @@ export default function CommunityPage() {
     blog.author?.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const resetBlogForm = () => {
+    setNewBlogData({ title: "", paragraphs: [""], image: "" });
+    setEditingBlog(null);
+  };
+
+  const openEditBlog = (blog: any) => {
+    setEditingBlog(blog);
+    setNewBlogData({
+      title: blog.title || "",
+      paragraphs: Array.isArray(blog.paragraphs) && blog.paragraphs.length ? blog.paragraphs : [""],
+      image: blog.image || "",
+    });
+    setIsCreatingBlog(true);
+  };
+
+  const handleImageFileChange = async (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ variant: "destructive", title: "Invalid Image", description: "Please select a valid image file." });
+      return;
+    }
+    setIsReadingImage(true);
+    try {
+      setNewBlogData((prev) => ({ ...prev, image: await fileToDataUrl(file) }));
+    } catch (error) {
+      toast({ variant: "destructive", title: "Image Upload Failed", description: getApiErrorMessage(error, "Could not read that image file.") });
+    } finally {
+      setIsReadingImage(false);
+    }
+  };
+
   const handleCreateBlog = () => {
     if (!newBlogData.title.trim() || newBlogData.paragraphs.some(p => !p.trim())) {
       toast({ variant: "destructive", title: "Missing Information", description: "Title and all paragraphs are required." });
       return;
     }
 
-    createBlogMutation.mutate(
-      {
-        title: newBlogData.title,
-        paragraphs: newBlogData.paragraphs.filter(p => p.trim()),
-        image: newBlogData.image || undefined
-      },
-      {
+    const payload = {
+      title: newBlogData.title,
+      paragraphs: newBlogData.paragraphs.filter(p => p.trim()),
+      image: newBlogData.image || undefined
+    };
+    const options = {
         onSuccess: () => {
-          toast({ title: "Blog Created", description: "Your draft has been saved. Publish when ready." });
-          setNewBlogData({ title: "", paragraphs: [""], image: "" });
+          toast({
+            title: editingBlog ? "Strategic Log Updated" : "Strategic Log Created",
+            description: editingBlog ? "Your log changes are now saved." : "Your post has been saved and published when permitted.",
+          });
+          resetBlogForm();
           setIsCreatingBlog(false);
         },
         onError: (error: any) => {
           toast({
             title: "Error",
-            description: error?.response?.data?.message || "Failed to create blog",
+            description: getApiErrorMessage(error, editingBlog ? "Failed to update strategic log." : "Failed to create strategic log."),
             variant: "destructive"
           });
         }
-      }
-    );
+      };
+
+    if (editingBlog) {
+      updateBlogMutation.mutate({ id: editingBlog.id, data: payload }, options);
+    } else {
+      createBlogMutation.mutate(payload, options);
+    }
   };
 
   const handlePublishBlog = (blogId: string) => {
@@ -104,7 +148,7 @@ export default function CommunityPage() {
       onError: (error: any) => {
         toast({
           title: "Error",
-          description: error?.response?.data?.message || "Failed to publish blog",
+          description: getApiErrorMessage(error, "Failed to publish blog"),
           variant: "destructive"
         });
       }
@@ -124,7 +168,7 @@ export default function CommunityPage() {
         onError: (error: any) => {
           toast({
             title: "Error",
-            description: error?.response?.data?.message || "Failed to add comment",
+            description: getApiErrorMessage(error, "Failed to add comment"),
             variant: "destructive"
           });
         }
@@ -140,7 +184,7 @@ export default function CommunityPage() {
       onError: (error: any) => {
         toast({
           title: "Error",
-          description: error?.response?.data?.message || "Failed to approve testimony",
+            description: getApiErrorMessage(error, "Failed to approve testimony"),
           variant: "destructive"
         });
       }
@@ -155,7 +199,7 @@ export default function CommunityPage() {
       onError: (error: any) => {
         toast({
           title: "Error",
-          description: error?.response?.data?.message || "Failed to reject testimony",
+            description: getApiErrorMessage(error, "Failed to reject testimony"),
           variant: "destructive"
         });
       }
@@ -182,6 +226,14 @@ export default function CommunityPage() {
     });
   };
 
+  const handleDeleteBlog = (blog: any) => {
+    if (!window.confirm(`Delete "${blog.title}" permanently? This action cannot be undone.`)) return;
+    deleteBlogMutation.mutate(blog.id, {
+      onSuccess: () => toast({ title: "Strategic Log Deleted", description: "The log has been removed from the community archive." }),
+      onError: (error: any) => toast({ variant: "destructive", title: "Delete Failed", description: getApiErrorMessage(error, "Could not delete this strategic log.") }),
+    });
+  };
+
   if (blogsLoading) {
     return (
       <div className="flex justify-center items-center h-40">
@@ -203,7 +255,7 @@ export default function CommunityPage() {
           <p className="text-muted-foreground mt-1">Share insights, stories, and updates with the EduIgnite community.</p>
         </div>
         {isExecutive && (
-          <Dialog open={isCreatingBlog} onOpenChange={setIsCreatingBlog}>
+          <Dialog open={isCreatingBlog} onOpenChange={(open) => { setIsCreatingBlog(open); if (!open) resetBlogForm(); }}>
             <DialogTrigger asChild>
               <Button className="gap-2 rounded-xl h-11 px-6 shadow-lg bg-secondary text-primary hover:bg-secondary/90 font-bold">
                 <Plus className="w-4 h-4" /> New Blog Post
@@ -211,7 +263,7 @@ export default function CommunityPage() {
             </DialogTrigger>
             <DialogContent className="sm:max-w-2xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl">
               <DialogHeader className="bg-primary p-8 text-white">
-                <DialogTitle className="text-2xl font-black">Create Blog Post</DialogTitle>
+                <DialogTitle className="text-2xl font-black">{editingBlog ? "Edit Strategic Log" : "Create Blog Post"}</DialogTitle>
                 <DialogDescription className="text-white/60">Share your thoughts and updates with the community.</DialogDescription>
               </DialogHeader>
               <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto">
@@ -226,13 +278,22 @@ export default function CommunityPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Feature Image URL (Optional)</Label>
-                  <Input
-                    value={newBlogData.image}
-                    onChange={(e) => setNewBlogData({ ...newBlogData, image: e.target.value })}
-                    placeholder="https://..."
-                    className="h-12 bg-accent/30 border-none rounded-xl"
-                  />
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Feature Image (Optional)</Label>
+                  <div className="grid gap-3">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleImageFileChange(e.target.files?.[0])}
+                      disabled={isReadingImage}
+                      className="h-12 bg-accent/30 border-none rounded-xl file:mr-4 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:text-xs file:font-bold file:text-white"
+                    />
+                    <Input
+                      value={newBlogData.image}
+                      onChange={(e) => setNewBlogData({ ...newBlogData, image: e.target.value })}
+                      placeholder="Or paste https://... / data:image..."
+                      className="h-12 bg-accent/30 border-none rounded-xl"
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-4">
@@ -269,11 +330,11 @@ export default function CommunityPage() {
               <DialogFooter className="bg-accent/20 p-6 border-t border-accent">
                 <Button
                   onClick={handleCreateBlog}
-                  disabled={createBlogMutation.isPending}
+                  disabled={createBlogMutation.isPending || updateBlogMutation.isPending || isReadingImage}
                   className="w-full h-12 rounded-xl bg-primary text-white font-bold gap-2"
                 >
-                  {createBlogMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  Create Blog Post
+                  {createBlogMutation.isPending || updateBlogMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {editingBlog ? "Save Strategic Log" : "Create Blog Post"}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -358,7 +419,7 @@ export default function CommunityPage() {
                       </p>
                     ))}
                   </CardContent>
-                  <CardFooter className="bg-accent/10 p-4 border-t flex gap-2">
+                  <CardFooter className="bg-accent/10 p-4 border-t flex flex-wrap gap-2">
                     <Dialog open={selectedBlog?.id === blog.id} onOpenChange={(open) => {
                       if (open) setSelectedBlog(blog);
                       else setSelectedBlog(null);
@@ -427,6 +488,16 @@ export default function CommunityPage() {
                     <Button variant="ghost" size="icon" className="h-10 w-10 text-primary/40 hover:text-primary">
                       <Heart className="w-4 h-4" />
                     </Button>
+                    {isExecutive && (
+                      <>
+                        <Button variant="outline" size="sm" className="h-10 rounded-xl font-bold text-primary" onClick={() => openEditBlog(blog)}>
+                          <Pencil className="w-4 h-4 mr-2" /> Edit
+                        </Button>
+                        <Button variant="outline" size="sm" className="h-10 rounded-xl font-bold text-destructive" onClick={() => handleDeleteBlog(blog)} disabled={deleteBlogMutation.isPending}>
+                          <Trash2 className="w-4 h-4 mr-2" /> Delete
+                        </Button>
+                      </>
+                    )}
                   </CardFooter>
                 </Card>
               ))
@@ -456,14 +527,33 @@ export default function CommunityPage() {
                             DRAFT
                           </Badge>
                         </div>
-                        <Button
-                          onClick={() => handlePublishBlog(blog.id)}
-                          disabled={publishBlogMutation.isPending}
-                          className="bg-primary text-white font-bold gap-2"
-                        >
-                          {publishBlogMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                          Publish
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => openEditBlog(blog)}
+                            className="font-bold gap-2"
+                          >
+                            <Pencil className="w-4 h-4" />
+                            Edit
+                          </Button>
+                          <Button
+                            onClick={() => handlePublishBlog(blog.id)}
+                            disabled={publishBlogMutation.isPending}
+                            className="bg-primary text-white font-bold gap-2"
+                          >
+                            {publishBlogMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                            Publish
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => handleDeleteBlog(blog)}
+                            disabled={deleteBlogMutation.isPending}
+                            className="font-bold gap-2 text-destructive"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Delete
+                          </Button>
+                        </div>
                       </div>
                     </CardHeader>
                   </Card>

@@ -61,7 +61,7 @@ const STAFF_ROLES: UserRole[] = ["TEACHER", "BURSAR", "LIBRARIAN"];
 
 export function DashboardSidebar({ onClose }: SidebarProps) {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, logout, platformSettings } = useAuth();
   const { t, language, setLanguage } = useI18n();
 
   const isSuperAdmin = EXECUTIVE_ROLES.includes(user?.role as UserRole);
@@ -70,6 +70,7 @@ export function DashboardSidebar({ onClose }: SidebarProps) {
   const isSchoolAdmin = user?.role === "SCHOOL_ADMIN" || user?.role === "SUB_ADMIN";
   const schoolLogo = resolveMediaUrl(user?.school?.logo);
   const userAvatar = resolveMediaUrl(user?.avatar);
+  const platformLogo = resolveMediaUrl(platformSettings.logo);
 
   const routes = [
     {
@@ -297,11 +298,15 @@ export function DashboardSidebar({ onClose }: SidebarProps) {
               </div>
             ) : isSuperAdmin && (
               <div className="bg-secondary p-1.5 rounded-lg shrink-0">
-                <Building2 className="w-6 h-6 text-primary" />
+                {platformLogo ? (
+                  <img src={platformLogo} alt={platformSettings.name} className="w-6 h-6 object-contain" />
+                ) : (
+                  <Building2 className="w-6 h-6 text-primary" />
+                )}
               </div>
             )}
             <span className="min-w-0 text-base sm:text-lg font-bold tracking-tight font-headline truncate uppercase">
-              {isSuperAdmin ? "Platform Board" : (user?.school?.shortName || user?.school?.name || "Institution")}
+              {isSuperAdmin ? platformSettings.name || "Platform Board" : (user?.school?.shortName || user?.school?.name || "Institution")}
             </span>
           </div>
           <div className="flex items-center gap-2">

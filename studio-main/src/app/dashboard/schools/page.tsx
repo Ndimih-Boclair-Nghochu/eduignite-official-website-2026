@@ -54,6 +54,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { schoolsService } from "@/lib/api/services/schools.service";
+import { getApiErrorMessage } from "@/lib/api/errors";
 
 const REGION_OPTIONS = [
   "Littoral",
@@ -163,8 +164,8 @@ export default function SchoolsManagementPage() {
   const createSchoolMutation = useCreateSchool();
   const toggleSchoolStatusMutation = useToggleSchoolStatus();
   const deleteSchoolMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await schoolsService.deleteSchool(id);
+    mutationFn: async ({ id, confirmation }: { id: string; confirmation: { matricule: string; password: string } }) => {
+      await schoolsService.deleteSchool(id, confirmation);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["schools"] });
@@ -177,6 +178,8 @@ export default function SchoolsManagementPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [managedSchool, setManagedSchool] = useState<any>(null);
   const [onboardingSuccess, setOnboardingSuccess] = useState<any>(null);
+  const [schoolPendingDelete, setSchoolPendingDelete] = useState<any>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState({ matricule: "", password: "" });
   
   const [newSchoolData, setNewSchoolData] = useState({
     name: "",
@@ -280,6 +283,31 @@ export default function SchoolsManagementPage() {
         title: "Failed to create school",
         description: parseDRFError(error),
       });
+    }
+  };
+
+  const requestSchoolDelete = (school: any) => {
+    setSchoolPendingDelete(school);
+    setDeleteConfirmation({ matricule: "", password: "" });
+  };
+
+  const handleConfirmSchoolDelete = async () => {
+    if (!schoolPendingDelete) return;
+    if (!deleteConfirmation.matricule.trim() || !deleteConfirmation.password) {
+      toast({ variant: "destructive", title: "Confirmation Required", description: "Enter your matricule and password before deleting this school." });
+      return;
+    }
+    try {
+      await deleteSchoolMutation.mutateAsync({
+        id: schoolPendingDelete.id,
+        confirmation: deleteConfirmation,
+      });
+      toast({ title: "School Deleted", description: `${schoolPendingDelete.name} was permanently removed.` });
+      setSchoolPendingDelete(null);
+      setManagedSchool(null);
+      setDeleteConfirmation({ matricule: "", password: "" });
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Delete Failed", description: getApiErrorMessage(error, "Could not delete this school.") });
     }
   };
 
@@ -505,7 +533,7 @@ export default function SchoolsManagementPage() {
                          <span className="font-bold text-xs">{school.status === 'Active' ? 'Suspend Node' : 'Activate Node'}</span>
                        </DropdownMenuItem>
                        <DropdownMenuSeparator />
-                       <DropdownMenuItem className="text-destructive gap-3 rounded-xl cursor-pointer" onClick={() => deleteSchoolMutation.mutateAsync(school.id)}>
+                       <DropdownMenuItem className="text-destructive gap-3 rounded-xl cursor-pointer" onClick={() => requestSchoolDelete(school)}>
                          <Trash2 className="w-4 h-4" /> 
                          <span className="font-bold text-xs">Decommission Node</span>
                        </DropdownMenuItem>
@@ -606,7 +634,7 @@ export default function SchoolsManagementPage() {
                       <Button variant="outline" className="w-full justify-between h-14 rounded-2xl font-black uppercase tracking-widest text-[10px] bg-white border-primary/10 hover:bg-primary/5 transition-all" onClick={() => { toggleSchoolStatusMutation.mutate({ id: managedSchool.id, status: getNextStatus(managedSchool?.status) }); setManagedSchool(null); }}>
                         License Authorization {managedSchool?.status === 'Active' ? <Ban className="w-5 h-5 text-red-500" /> : <CheckCircle2 className="w-5 h-5 text-green-500" />}
                       </Button>
-                      <Button variant="destructive" className="w-full justify-between h-14 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg opacity-80 hover:opacity-100 transition-all" onClick={() => { deleteSchoolMutation.mutate(managedSchool.id); setManagedSchool(null); }}>
+                      <Button variant="destructive" className="w-full justify-between h-14 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg opacity-80 hover:opacity-100 transition-all" onClick={() => requestSchoolDelete(managedSchool)}>
                         Permanently Decommission <Trash2 className="w-5 h-5" />
                       </Button>
                     </>
@@ -624,6 +652,43 @@ export default function SchoolsManagementPage() {
                <p className="text-[10px] font-black uppercase text-muted-foreground tracking-[0.3em]">Institutional Node Certificate</p>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!schoolPendingDelete} onOpenChange={(open) => !open && setSchoolPendingDelete(null)}>
+        <DialogContent className="sm:max-w-md rounded-[2rem]">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black uppercase text-destructive">Confirm School Deletion</DialogTitle>
+            <DialogDescription>
+              This will permanently delete {schoolPendingDelete?.name}. Confirm with your own matricule and password.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Your Matricule</Label>
+              <Input
+                value={deleteConfirmation.matricule}
+                onChange={(event) => setDeleteConfirmation((prev) => ({ ...prev, matricule: event.target.value }))}
+                placeholder="Enter your matricule exactly"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Your Password</Label>
+              <Input
+                type="password"
+                value={deleteConfirmation.password}
+                onChange={(event) => setDeleteConfirmation((prev) => ({ ...prev, password: event.target.value }))}
+                placeholder="Enter your password"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSchoolPendingDelete(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleConfirmSchoolDelete} disabled={deleteSchoolMutation.isPending}>
+              {deleteSchoolMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+              Delete Permanently
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

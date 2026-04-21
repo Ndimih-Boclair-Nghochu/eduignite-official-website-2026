@@ -4,9 +4,9 @@ from .models import Testimony, CommunityBlog, BlogComment
 
 class AuthorSerializer(serializers.Serializer):
     """Minimal author representation embedded in blog/comment responses."""
-    id = serializers.IntegerField(source='pk', read_only=True)
+    id = serializers.CharField(source='pk', read_only=True)
     name = serializers.SerializerMethodField()
-    avatar = serializers.URLField(read_only=True)
+    avatar = serializers.CharField(read_only=True, allow_blank=True, allow_null=True)
     role = serializers.CharField(read_only=True)
 
     def get_name(self, obj):
@@ -77,6 +77,8 @@ class CommunityBlogDetailSerializer(serializers.ModelSerializer):
 
 
 class CommunityBlogCreateSerializer(serializers.ModelSerializer):
+    image = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
     class Meta:
         model = CommunityBlog
         fields = ['title', 'image', 'paragraphs']
@@ -84,6 +86,11 @@ class CommunityBlogCreateSerializer(serializers.ModelSerializer):
     def validate(self, data):
         if not isinstance(data.get('paragraphs', []), list):
             raise serializers.ValidationError("paragraphs must be a list of strings")
+        if not data.get('title', '').strip():
+            raise serializers.ValidationError({'title': 'A strategic log title is required.'})
+        data['paragraphs'] = [str(paragraph).strip() for paragraph in data.get('paragraphs', []) if str(paragraph).strip()]
+        if not data['paragraphs']:
+            raise serializers.ValidationError({'paragraphs': 'At least one content paragraph is required.'})
         return data
 
     def create(self, validated_data):

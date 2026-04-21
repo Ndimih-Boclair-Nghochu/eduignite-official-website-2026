@@ -714,10 +714,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       image: b.image,
       paragraphs: b.paragraphs,
     });
-    const published =
-      (created as any)?.is_published || (created as any)?.isPublished
-        ? created
-        : await communityService.publishBlog((created as any).id);
+    let published = created;
+    if (!((created as any)?.is_published || (created as any)?.isPublished) && (created as any)?.id) {
+      try {
+        published = await communityService.publishBlog((created as any).id);
+      } catch {
+        // The backend may already auto-publish executive posts while older serializers omit the flag.
+        published = created;
+      }
+    }
     setCommunityBlogs((prev) => [mapCommunityBlogRecord(published), ...prev]);
   };
 

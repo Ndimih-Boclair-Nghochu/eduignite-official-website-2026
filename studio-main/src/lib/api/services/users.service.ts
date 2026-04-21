@@ -135,11 +135,11 @@ export const usersService = {
     return normalizeFounder(data);
   },
 
-  async deleteFounder(id: string): Promise<void> {
-    await apiClient.delete(API.USERS.FOUNDER_DETAIL(id));
+  async deleteFounder(id: string, confirmation?: { matricule: string; password: string }): Promise<void> {
+    await apiClient.delete(API.USERS.FOUNDER_DETAIL(id), { data: confirmation ?? {} });
   },
 
-  async deleteUser(id: string): Promise<void> {
-    await apiClient.delete(API.USERS.DETAIL(id));
+  async deleteUser(id: string, confirmation?: { matricule: string; password: string }): Promise<void> {
+    await apiClient.delete(API.USERS.DETAIL(id), { data: confirmation ?? {} });
   },
 };

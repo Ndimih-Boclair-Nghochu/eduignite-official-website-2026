@@ -147,7 +147,10 @@ export function useDeleteFounder() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) => usersService.deleteFounder(id),
+    mutationFn: (input: string | { id: string; confirmation: { matricule: string; password: string } }) =>
+      typeof input === 'string'
+        ? usersService.deleteFounder(input)
+        : usersService.deleteFounder(input.id, input.confirmation),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: usersKeys.founders() });
       queryClient.invalidateQueries({ queryKey: usersKeys.executives() });

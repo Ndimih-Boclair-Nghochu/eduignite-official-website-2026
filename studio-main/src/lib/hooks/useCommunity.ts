@@ -157,6 +157,36 @@ export function usePublishBlog() {
 }
 
 /**
+ * Hook for updating a strategic log
+ */
+export function useUpdateBlog() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: CreateBlogRequest }) =>
+      communityService.updateBlog(id, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: communityKeys.blogsList() });
+      queryClient.invalidateQueries({ queryKey: communityKeys.blog(variables.id) });
+    },
+  });
+}
+
+/**
+ * Hook for deleting a strategic log
+ */
+export function useDeleteBlog() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => communityService.deleteBlog(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: communityKeys.blogsList() });
+    },
+  });
+}
+
+/**
  * Hook for fetching blog comments
  */
 export function useBlogComments(blogId: string) {
