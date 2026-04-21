@@ -98,8 +98,8 @@ class MatriculeLoginView(APIView):
             user = User.objects.get(matricule=matricule)
         except User.DoesNotExist:
             return Response(
-                {'detail': 'Invalid credentials'},
-                status=status.HTTP_401_UNAUTHORIZED,
+                {'detail': 'Matricule does not exist.'},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         if not user.is_active:
@@ -110,7 +110,7 @@ class MatriculeLoginView(APIView):
 
         if not user.check_password(password):
             return Response(
-                {'detail': 'Invalid credentials'},
+                {'detail': 'Wrong password.'},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 

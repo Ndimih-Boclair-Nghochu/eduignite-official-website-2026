@@ -18,6 +18,11 @@ export function getApiErrorMessage(error: any, fallback = "Something went wrong.
   if (data?.error) return String(data.error);
 
   if (data && typeof data === "object") {
+    if (Array.isArray(data.matricule) && data.matricule.length) return String(data.matricule[0]);
+    if (typeof data.matricule === "string") return data.matricule;
+    if (Array.isArray(data.password) && data.password.length) return String(data.password[0]);
+    if (typeof data.password === "string") return data.password;
+
     const messages = Object.entries(data)
       .flatMap(([field, value]) => {
         if (Array.isArray(value)) return value.map((item) => `${field}: ${item}`);

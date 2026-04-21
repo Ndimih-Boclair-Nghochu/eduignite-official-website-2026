@@ -18,7 +18,6 @@ import {
   Calendar,
   User,
   PenTool,
-  Bookmark,
   MessageSquare,
   X,
   FileText,
@@ -109,13 +108,18 @@ export default function CommunityTestimonyPage() {
 
   const approvedTestimonials = testimonials.filter(t => t.status === 'approved');
   const platformLogo = resolveMediaUrl(platformSettings.logo);
-  const latestBlogs = communityBlogs.slice(0, 3);
+  const latestBlogs = communityBlogs.slice(0, 4);
+  const latestEvents = publicEvents.slice(0, 4);
   const navLinks = [
-    { href: "/login", label: "Home" },
+    { href: "/login", label: "Login" },
     { href: "#logs", label: "Strategic Logs" },
     { href: "#events", label: "Highlights" },
     { href: "#testimonies", label: "Community" },
+    { href: "/community/logs", label: "All Logs" },
+    { href: "/community/highlights", label: "All Highlights" },
+    { href: "mailto:eduignitecmr@gmail.com", label: "Contact" },
   ];
+  const isExternalHref = (href: string) => href.startsWith("http") || href.startsWith("mailto:");
 
   return (
     <div className="min-h-screen bg-[#F0F2F5] selection:bg-secondary selection:text-primary">
@@ -139,6 +143,8 @@ export default function CommunityTestimonyPage() {
             {navLinks.map((link) => (
               link.href.startsWith("#") ? (
                 <a key={link.href} href={link.href} className="text-sm font-bold text-muted-foreground hover:text-primary transition-colors">{link.label}</a>
+              ) : isExternalHref(link.href) ? (
+                <a key={link.href} href={link.href} className="text-sm font-bold text-muted-foreground hover:text-primary transition-colors">{link.label}</a>
               ) : (
                 <Link key={link.href} href={link.href} className="text-sm font-bold text-muted-foreground hover:text-primary transition-colors">{link.label}</Link>
               )
@@ -157,6 +163,8 @@ export default function CommunityTestimonyPage() {
             <nav className="max-w-7xl mx-auto grid gap-2">
               {navLinks.map((link) => (
                 link.href.startsWith("#") ? (
+                  <a key={link.href} href={link.href} onClick={() => setIsMobileNavOpen(false)} className="rounded-xl px-4 py-3 text-sm font-black uppercase tracking-widest text-primary hover:bg-primary/5">{link.label}</a>
+                ) : isExternalHref(link.href) ? (
                   <a key={link.href} href={link.href} onClick={() => setIsMobileNavOpen(false)} className="rounded-xl px-4 py-3 text-sm font-black uppercase tracking-widest text-primary hover:bg-primary/5">{link.label}</a>
                 ) : (
                   <Link key={link.href} href={link.href} onClick={() => setIsMobileNavOpen(false)} className="rounded-xl px-4 py-3 text-sm font-black uppercase tracking-widest text-primary hover:bg-primary/5">{link.label}</Link>
@@ -253,7 +261,7 @@ export default function CommunityTestimonyPage() {
                 </Card>
               ))}
             </div>
-            {communityBlogs.length > 3 && (
+            {communityBlogs.length > 4 && (
               <div className="flex justify-center">
                 <Button asChild variant="outline" className="h-14 rounded-2xl border-primary/10 bg-white px-8 font-black uppercase tracking-widest text-xs text-primary">
                   <Link href="/community/logs">
@@ -281,7 +289,7 @@ export default function CommunityTestimonyPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-            {publicEvents.map((event, idx) => (
+            {latestEvents.map((event, idx) => (
               <Card key={event.id} className={cn(
                 "border-none shadow-2xl rounded-[3rem] overflow-hidden group hover:shadow-primary/5 transition-all duration-500 bg-white",
                 "animate-in fade-in slide-in-from-bottom-10"
@@ -316,6 +324,15 @@ export default function CommunityTestimonyPage() {
               </Card>
             ))}
           </div>
+          {publicEvents.length > 4 && (
+            <div className="flex justify-center">
+              <Button asChild variant="outline" className="h-14 rounded-2xl border-primary/10 bg-white px-8 font-black uppercase tracking-widest text-xs text-primary">
+                <Link href="/community/highlights">
+                  See More Highlights <ArrowRight className="ml-2 w-4 h-4" />
+                </Link>
+              </Button>
+            </div>
+          )}
         </section>
 
         {/* 4. TESTIMONY MARQUEE SECTION */}

@@ -25,7 +25,7 @@ class LoginSerializer(serializers.Serializer):
     def validate_matricule(self, value):
         """Validate that user with matricule exists."""
         if not User.objects.filter(matricule=value).exists():
-            raise serializers.ValidationError('User with this matricule does not exist.')
+            raise serializers.ValidationError('Matricule does not exist.')
         return value
 
 

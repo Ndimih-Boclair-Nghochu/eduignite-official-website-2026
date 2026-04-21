@@ -59,6 +59,7 @@ export default function LoginPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const [authData, setAuthData] = useState({
     matricule: "",
@@ -84,6 +85,7 @@ export default function LoginPage() {
 
   const handleQuickLogin = async (matricule: string) => {
     if (mode !== "login" || isProcessing) return;
+    setAuthError(null);
     setIsProcessing(true);
     try {
       await login(matricule, authData.password);
@@ -95,6 +97,7 @@ export default function LoginPage() {
         title: t("authFailed"),
         description: firebaseInitError ? `${firebaseInitError} ${errorMessage}` : errorMessage,
       });
+      setAuthError(firebaseInitError ? `${firebaseInitError} ${errorMessage}` : errorMessage);
     } finally {
       setIsProcessing(false);
     }
@@ -103,6 +106,7 @@ export default function LoginPage() {
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isProcessing) return;
+    setAuthError(null);
     setIsProcessing(true);
 
     if (mode === "login" || mode === "activate") {
@@ -127,6 +131,7 @@ export default function LoginPage() {
           title: t("authFailed"),
           description: firebaseInitError ? `${firebaseInitError} ${errorMessage}` : errorMessage,
         });
+        setAuthError(firebaseInitError ? `${firebaseInitError} ${errorMessage}` : errorMessage);
       } finally {
         setIsProcessing(false);
       }
@@ -155,6 +160,7 @@ export default function LoginPage() {
     clearAuthData();
     setShowPassword(false);
     setShowConfirmPassword(false);
+    setAuthError(null);
     setAuthMode(newMode);
   };
 
@@ -272,6 +278,21 @@ export default function LoginPage() {
                   </div>
                 )}
                 <form onSubmit={handleAuth} className="space-y-6">
+                  {authError && (
+                    <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-left shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-red-700">
+                            Login problem
+                          </p>
+                          <p className="mt-1 text-sm font-bold leading-relaxed text-red-900">
+                            {authError}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {mode === "forgot" && (
                     <div className="space-y-6 animate-in slide-in-from-top-2">
                       <p className="text-sm text-center text-muted-foreground">
@@ -286,10 +307,11 @@ export default function LoginPage() {
                           autoComplete="username"
                           type="text"
                           disabled={isProcessing}
-                          className="h-14 bg-accent/30 border-none rounded-2xl focus-visible:ring-primary font-bold text-center text-lg shadow-inner transition-all focus:bg-white px-6"
+                          className="h-14 bg-accent/30 border-none rounded-2xl focus-visible:ring-primary font-bold normal-case text-center text-lg shadow-inner transition-all focus:bg-white px-6"
+                          style={{ textTransform: "none" }}
                           placeholder="e.g. STU001"
                           value={authData.matricule}
-                          onChange={(e) => setAuthData({ ...authData, matricule: e.target.value })}
+                          onChange={(e) => { setAuthError(null); setAuthData({ ...authData, matricule: e.target.value }); }}
                         />
                       </div>
                     </div>
@@ -305,11 +327,13 @@ export default function LoginPage() {
                           required
                           autoComplete="off"
                           disabled={isProcessing}
-                          className="h-14 bg-accent/30 border-none rounded-2xl focus-visible:ring-primary font-black text-center text-xl shadow-inner transition-all focus:bg-white"
+                          className="h-14 bg-accent/30 border-none rounded-2xl focus-visible:ring-primary font-black normal-case text-center text-xl shadow-inner transition-all focus:bg-white"
+                          style={{ textTransform: "none" }}
                           value={authData.matricule}
-                          onChange={(e) =>
-                            setAuthData({ ...authData, matricule: e.target.value })
-                          }
+                          onChange={(e) => {
+                            setAuthError(null);
+                            setAuthData({ ...authData, matricule: e.target.value });
+                          }}
                         />
                       </div>
                       <div className="space-y-3">
@@ -336,7 +360,7 @@ export default function LoginPage() {
                             disabled={isProcessing}
                             className="h-14 bg-accent/30 border-none rounded-2xl focus-visible:ring-primary font-bold text-center text-lg shadow-inner transition-all focus:bg-white px-12"
                             value={authData.password}
-                            onChange={(e) => setAuthData({ ...authData, password: e.target.value })}
+                            onChange={(e) => { setAuthError(null); setAuthData({ ...authData, password: e.target.value }); }}
                           />
                           <button
                             type="button"
