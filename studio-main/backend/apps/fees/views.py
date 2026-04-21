@@ -1,9 +1,9 @@
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.exceptions import ValidationError, PermissionDenied
-from django.shortcuts import get_object_or_404
-from django.db.models import Sum, Q, Count
+from rest_framework.exceptions import PermissionDenied
+from django.db.models import Sum, DecimalField, Value
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from decimal import Decimal
 
@@ -11,9 +11,17 @@ from .models import FeeStructure, Payment, Invoice
 from .serializers import (
     FeeStructureSerializer, PaymentListSerializer, PaymentDetailSerializer,
     PaymentCreateSerializer, PaymentConfirmSerializer, InvoiceSerializer,
-    RevenueReportSerializer, FeeComplianceSerializer
+    RevenueReportSerializer,
 )
 from .utils import generate_reference_number, generate_receipt_number, generate_invoice_number
+
+_FEE_STAFF = ['SCHOOL_ADMIN', 'SUB_ADMIN', 'BURSAR']
+
+
+def _require_school(user):
+    """Raise a clear error if the user has no school assigned."""
+    if not user.school_id:
+        raise PermissionDenied("Your account is not assigned to a school. Contact the platform admin.")
 
 
 class FeeStructureViewSet(viewsets.ModelViewSet):
@@ -23,20 +31,15 @@ class FeeStructureViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        queryset = FeeStructure.objects.all()
-
-        if user.role in ['SCHOOL_ADMIN', 'SUB_ADMIN', 'BURSAR']:
-            queryset = queryset.filter(school=user.school)
-        else:
-            queryset = queryset.none()
-
-        return queryset
+        if user.role in _FEE_STAFF and user.school_id:
+            return FeeStructure.objects.filter(school_id=user.school_id)
+        return FeeStructure.objects.none()
 
     def create(self, request, *args, **kwargs):
         if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
             raise PermissionDenied("Only school administrators can create fee structures.")
-
-        request.data['school'] = request.user.school.id
+        _require_school(request.user)
+        request.data['school'] = request.user.school_id
         return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
@@ -44,243 +47,223 @@ class FeeStructureViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("Only school administrators can update fee structures.")
         return super().update(request, *args, **kwargs)
 
+    def destroy(self, request, *args, **kwargs):
+        if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
+            raise PermissionDenied("Only school administrators can delete fee structures.")
+        return super().destroy(request, *args, **kwargs)
+
 
 class PaymentViewSet(viewsets.ModelViewSet):
-    queryset = Payment.objects.select_related('payer', 'fee_structure', 'bursar')
+    queryset = Payment.objects.select_related('payer', 'fee_structure', 'bursar', 'school')
     permission_classes = [permissions.IsAuthenticated]
 
     def get_serializer_class(self):
         if self.action == 'create':
             return PaymentCreateSerializer
-        elif self.action == 'retrieve':
+        if self.action == 'retrieve':
             return PaymentDetailSerializer
-        elif self.action in ['confirm', 'reject']:
+        if self.action in ['confirm', 'reject']:
             return PaymentConfirmSerializer
         return PaymentListSerializer
 
     def get_queryset(self):
         user = self.request.user
-        queryset = Payment.objects.select_related('payer', 'fee_structure', 'bursar')
-
-        if user.role in ['SCHOOL_ADMIN', 'SUB_ADMIN', 'BURSAR']:
-            queryset = queryset.filter(school=user.school)
-        elif user.role == 'STUDENT':
-            queryset = queryset.filter(payer=user)
-        elif user.role == 'PARENT':
-            queryset = queryset.filter(payer=user)
-        else:
-            queryset = queryset.none()
-
-        return queryset
+        qs = Payment.objects.select_related('payer', 'fee_structure', 'bursar', 'school')
+        if user.role in _FEE_STAFF and user.school_id:
+            return qs.filter(school_id=user.school_id)
+        if user.role in ['STUDENT', 'PARENT']:
+            return qs.filter(payer=user)
+        return qs.none()
 
     def create(self, request, *args, **kwargs):
-        if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN', 'BURSAR']:
+        if request.user.role not in _FEE_STAFF:
             raise PermissionDenied("Only bursars and administrators can record payments.")
+        _require_school(request.user)
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        payment = serializer.save(
-            school=request.user.school,
-            bursar=request.user,
-            reference_number=generate_reference_number()
-        )
+        # Ensure payer belongs to same school
+        payer = serializer.validated_data.get('payer')
+        if payer and str(payer.school_id) != str(request.user.school_id):
+            raise PermissionDenied("The payer does not belong to your school.")
 
-        return Response(
-            PaymentDetailSerializer(payment).data,
-            status=status.HTTP_201_CREATED
+        payment = serializer.save(
+            school_id=request.user.school_id,
+            bursar=request.user,
+            reference_number=generate_reference_number(),
         )
+        return Response(PaymentDetailSerializer(payment).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):
-        """Bursar confirms payment and generates receipt"""
-        if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN', 'BURSAR']:
+        """Bursar confirms a pending payment and generates a receipt + invoice."""
+        if request.user.role not in _FEE_STAFF:
             raise PermissionDenied("Only bursars and administrators can confirm payments.")
+        _require_school(request.user)
 
         payment = self.get_object()
 
+        # Cross-school guard
+        if str(payment.school_id) != str(request.user.school_id):
+            raise PermissionDenied("You can only confirm payments for your own school.")
+
         if payment.status != 'pending':
-            return Response(
-                {'error': f'Payment is already {payment.status}.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'error': f'Payment is already {payment.status}.'}, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = PaymentConfirmSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        # Generate receipt and confirm payment
-        receipt_number = serializer.validated_data.get('receipt_number', generate_receipt_number())
-
+        receipt_number = serializer.validated_data.get('receipt_number') or generate_receipt_number()
         payment.status = 'confirmed'
         payment.confirmed_at = timezone.now()
         payment.receipt_number = receipt_number
-        payment.save()
+        payment.bursar = request.user
+        payment.save(update_fields=['status', 'confirmed_at', 'receipt_number', 'bursar'])
 
-        # Create invoice
         invoice = Invoice.objects.create(
             payment=payment,
             invoice_number=generate_invoice_number(),
-            issued_by=request.user
+            issued_by=request.user,
         )
-
         return Response(
-            {
-                'payment': PaymentDetailSerializer(payment).data,
-                'invoice': InvoiceSerializer(invoice).data,
-            },
-            status=status.HTTP_200_OK
+            {'payment': PaymentDetailSerializer(payment).data, 'invoice': InvoiceSerializer(invoice).data},
+            status=status.HTTP_200_OK,
         )
 
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
-        """Reject a payment with reason"""
-        if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN', 'BURSAR']:
+        """Reject a pending payment with an optional reason."""
+        if request.user.role not in _FEE_STAFF:
             raise PermissionDenied("Only bursars and administrators can reject payments.")
+        _require_school(request.user)
 
         payment = self.get_object()
 
+        if str(payment.school_id) != str(request.user.school_id):
+            raise PermissionDenied("You can only reject payments for your own school.")
+
         if payment.status != 'pending':
-            return Response(
-                {'error': f'Only pending payments can be rejected.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'error': 'Only pending payments can be rejected.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        reason = request.data.get('reason', '')
         payment.status = 'rejected'
-        payment.notes = reason
-        payment.save()
-
-        return Response(
-            PaymentDetailSerializer(payment).data,
-            status=status.HTTP_200_OK
-        )
+        payment.notes = request.data.get('reason', '')
+        payment.save(update_fields=['status', 'notes'])
+        return Response(PaymentDetailSerializer(payment).data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'])
     def my_payments(self, request):
-        """Current user's payment history"""
-        queryset = self.get_queryset().filter(payer=request.user)
-        serializer = self.get_serializer(queryset, many=True)
+        """Current user's own payment history."""
+        queryset = Payment.objects.select_related('fee_structure').filter(payer=request.user)
+        serializer = PaymentListSerializer(queryset, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def revenue_report(self, request):
-        """Total revenue by period, method, fee type"""
-        if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN', 'BURSAR']:
+        """Revenue summary by period, method, and fee type."""
+        if request.user.role not in _FEE_STAFF:
             raise PermissionDenied("Only school staff can view revenue reports.")
+        _require_school(request.user)
 
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
 
-        queryset = Payment.objects.filter(school=request.user.school, status='confirmed')
-
+        zero = Value(Decimal('0.00'), output_field=DecimalField())
+        base_qs = Payment.objects.filter(school_id=request.user.school_id)
+        confirmed_qs = base_qs.filter(status='confirmed')
         if start_date:
-            queryset = queryset.filter(payment_date__gte=start_date)
+            confirmed_qs = confirmed_qs.filter(payment_date__gte=start_date)
         if end_date:
-            queryset = queryset.filter(payment_date__lte=end_date)
+            confirmed_qs = confirmed_qs.filter(payment_date__lte=end_date)
 
-        total_collected = queryset.aggregate(Sum('amount'))['amount__sum'] or Decimal('0.00')
-        total_pending = Payment.objects.filter(
-            school=request.user.school,
-            status='pending'
-        ).aggregate(Sum('amount'))['amount__sum'] or Decimal('0.00')
-        total_rejected = Payment.objects.filter(
-            school=request.user.school,
-            status='rejected'
-        ).aggregate(Sum('amount'))['amount__sum'] or Decimal('0.00')
+        def _sum(qs):
+            return qs.aggregate(s=Coalesce(Sum('amount'), zero))['s']
 
-        # By payment method
-        by_method = {}
-        for method, _ in Payment.PAYMENT_METHOD_CHOICES:
-            amount = queryset.filter(payment_method=method).aggregate(Sum('amount'))['amount__sum'] or Decimal('0.00')
-            by_method[method] = float(amount)
-
-        # By fee type
-        by_fee_type = {}
-        for fee in queryset.values('fee_structure__name').annotate(total=Sum('amount')):
-            if fee['fee_structure__name']:
-                by_fee_type[fee['fee_structure__name']] = float(fee['total'])
-
-        period = f"{start_date or 'All'} to {end_date or 'All'}"
-
-        data = {
-            'total_collected': float(total_collected),
-            'total_pending': float(total_pending),
-            'total_rejected': float(total_rejected),
-            'period': period,
-            'by_method': by_method,
-            'by_fee_type': by_fee_type,
-            'payment_count': queryset.count(),
+        by_method = {
+            method: float(_sum(confirmed_qs.filter(payment_method=method)))
+            for method, _ in Payment.PAYMENT_METHOD_CHOICES
+        }
+        by_fee_type = {
+            row['fee_structure__name']: float(row['total'])
+            for row in confirmed_qs.values('fee_structure__name').annotate(total=Sum('amount'))
+            if row['fee_structure__name']
         }
 
-        serializer = RevenueReportSerializer(data)
-        return Response(serializer.data)
+        data = {
+            'total_collected': float(_sum(confirmed_qs)),
+            'total_pending':   float(_sum(base_qs.filter(status='pending'))),
+            'total_rejected':  float(_sum(base_qs.filter(status='rejected'))),
+            'period': f"{start_date or 'All'} to {end_date or 'All'}",
+            'by_method': by_method,
+            'by_fee_type': by_fee_type,
+            'payment_count': confirmed_qs.count(),
+        }
+        return Response(RevenueReportSerializer(data).data)
 
     @action(detail=False, methods=['get'])
     def outstanding_fees(self, request):
-        """Users who haven't paid"""
-        if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN', 'BURSAR']:
+        """Users in the school who have not fully paid a fee structure."""
+        if request.user.role not in _FEE_STAFF:
             raise PermissionDenied("Only school staff can view outstanding fees.")
+        _require_school(request.user)
 
-        # Get all users in school who should pay fees
         from django.contrib.auth import get_user_model
         User = get_user_model()
 
-        # Get fee structures for school
-        fee_structures = FeeStructure.objects.filter(school=request.user.school)
-
+        fee_structures = FeeStructure.objects.filter(school_id=request.user.school_id)
         outstanding_data = []
 
         for fee in fee_structures:
-            users = User.objects.filter(school=request.user.school, role=fee.role)
-
-            for user in users:
-                # Check if user has paid this fee
-                has_paid = Payment.objects.filter(
-                    payer=user,
+            # One DB round-trip per fee structure instead of one per user
+            paid_map = {
+                row['payer_id']: row['total']
+                for row in Payment.objects.filter(
+                    school_id=request.user.school_id,
                     fee_structure=fee,
-                    status='confirmed'
-                ).exists()
+                    status='confirmed',
+                ).values('payer_id').annotate(total=Sum('amount'))
+            }
+            pending_map = {
+                row['payer_id']: row['total']
+                for row in Payment.objects.filter(
+                    school_id=request.user.school_id,
+                    fee_structure=fee,
+                    status='pending',
+                ).values('payer_id').annotate(total=Sum('amount'))
+            }
 
-                if not has_paid:
-                    total_owed = fee.amount
-                    total_paid = Payment.objects.filter(
-                        payer=user,
-                        fee_structure=fee,
-                        status='confirmed'
-                    ).aggregate(Sum('amount'))['amount__sum'] or Decimal('0.00')
-
-                    outstanding_data.append({
-                        'user_id': str(user.id),
-                        'user_name': user.get_full_name(),
-                        'total_owed': float(total_owed),
-                        'total_paid': float(total_paid),
-                        'pending_payments': Payment.objects.filter(payer=user, fee_structure=fee, status='pending').count(),
-                        'paid_payments': Payment.objects.filter(payer=user, fee_structure=fee, status='confirmed').count(),
-                        'compliance_percentage': float(total_paid / total_owed * 100) if total_owed > 0 else 0,
-                    })
+            for user in User.objects.filter(
+                school_id=request.user.school_id, role=fee.role, is_active=True
+            ):
+                total_paid = paid_map.get(user.id, Decimal('0.00'))
+                if total_paid >= fee.amount:
+                    continue
+                outstanding_data.append({
+                    'user_id': str(user.id),
+                    'user_name': user.get_full_name(),
+                    'fee_name': fee.name,
+                    'total_owed': float(fee.amount),
+                    'total_paid': float(total_paid),
+                    'pending_amount': float(pending_map.get(user.id, Decimal('0.00'))),
+                    'compliance_percentage': round(float(total_paid / fee.amount * 100), 2) if fee.amount > 0 else 0,
+                })
 
         return Response(outstanding_data)
 
     @action(detail=True, methods=['get'])
     def generate_receipt(self, request, pk=None):
-        """Returns receipt data"""
+        """Returns receipt data for a confirmed payment."""
         payment = self.get_object()
 
         if payment.status != 'confirmed':
-            return Response(
-                {'error': 'Only confirmed payments have receipts.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({'error': 'Only confirmed payments have receipts.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             invoice = payment.invoice
         except Invoice.DoesNotExist:
-            return Response(
-                {'error': 'Receipt not found for this payment.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({'error': 'Receipt not found for this payment.'}, status=status.HTTP_404_NOT_FOUND)
 
-        data = {
+        return Response({
             'receipt_number': payment.receipt_number,
             'invoice_number': invoice.invoice_number,
             'payment_date': payment.payment_date,
@@ -291,26 +274,20 @@ class PaymentViewSet(viewsets.ModelViewSet):
             'fee_description': payment.fee_structure.name if payment.fee_structure else 'General Payment',
             'payment_method': payment.get_payment_method_display(),
             'school_name': payment.school.name,
-            'school_address': payment.school.address if hasattr(payment.school, 'address') else '',
-        }
-
-        return Response(data)
+            'school_address': payment.school.address,
+        })
 
 
 class InvoiceViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Invoice.objects.select_related('payment', 'issued_by')
+    queryset = Invoice.objects.select_related('payment__payer', 'payment__school', 'issued_by')
     serializer_class = InvoiceSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
-        queryset = Invoice.objects.select_related('payment', 'issued_by')
-
-        if user.role in ['SCHOOL_ADMIN', 'SUB_ADMIN', 'BURSAR']:
-            queryset = queryset.filter(payment__school=user.school)
-        elif user.role in ['STUDENT', 'PARENT']:
-            queryset = queryset.filter(payment__payer=user)
-        else:
-            queryset = queryset.none()
-
-        return queryset
+        qs = Invoice.objects.select_related('payment__payer', 'payment__school', 'issued_by')
+        if user.role in _FEE_STAFF and user.school_id:
+            return qs.filter(payment__school_id=user.school_id)
+        if user.role in ['STUDENT', 'PARENT']:
+            return qs.filter(payment__payer=user)
+        return qs.none()

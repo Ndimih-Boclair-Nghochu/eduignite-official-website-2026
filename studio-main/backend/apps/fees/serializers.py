@@ -7,9 +7,9 @@ class FeeStructureSerializer(serializers.ModelSerializer):
         model = FeeStructure
         fields = [
             'id', 'school', 'name', 'role', 'amount', 'currency', 'academic_year',
-            'due_date', 'is_mandatory', 'description', 'created'
+            'due_date', 'is_mandatory', 'description', 'created',
         ]
-        read_only_fields = ['id', 'created']
+        read_only_fields = ['id', 'school', 'created']
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
