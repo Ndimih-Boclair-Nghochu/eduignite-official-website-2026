@@ -335,6 +335,9 @@ export default function LoginPage() {
                             setAuthData({ ...authData, matricule: e.target.value });
                           }}
                         />
+                        <p className="px-1 text-center text-[10px] font-bold text-muted-foreground">
+                          Matricule is case-sensitive. Lowercase letters stay lowercase.
+                        </p>
                       </div>
                       <div className="space-y-3">
                         <div className="flex items-center justify-between px-1">

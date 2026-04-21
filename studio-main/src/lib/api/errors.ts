@@ -10,10 +10,19 @@ export function getApiErrorMessage(error: any, fallback = "Something went wrong.
 
   if (typeof data === "string") {
     const trimmed = data.trim();
+    if (/invalid credentials/i.test(trimmed)) {
+      return "Wrong password or matricule does not exist. Check both fields and try again.";
+    }
     return trimmed.length > 280 ? fallback : trimmed || fallback;
   }
 
-  if (data?.detail) return String(data.detail);
+  if (data?.detail) {
+    const detail = String(data.detail);
+    if (/invalid credentials/i.test(detail)) {
+      return "Wrong password or matricule does not exist. Check both fields and try again.";
+    }
+    return detail;
+  }
   if (data?.message) return String(data.message);
   if (data?.error) return String(data.error);
 

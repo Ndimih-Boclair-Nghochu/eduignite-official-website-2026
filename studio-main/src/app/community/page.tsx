@@ -261,15 +261,13 @@ export default function CommunityTestimonyPage() {
                 </Card>
               ))}
             </div>
-            {communityBlogs.length > 4 && (
-              <div className="flex justify-center">
-                <Button asChild variant="outline" className="h-14 rounded-2xl border-primary/10 bg-white px-8 font-black uppercase tracking-widest text-xs text-primary">
-                  <Link href="/community/logs">
-                    See More Strategic Logs <ArrowRight className="ml-2 w-4 h-4" />
-                  </Link>
-                </Button>
-              </div>
-            )}
+            <div className="flex justify-center">
+              <Button asChild variant="outline" className="h-14 rounded-2xl border-primary/10 bg-white px-8 font-black uppercase tracking-widest text-xs text-primary">
+                <Link href="/community/logs">
+                  See All Strategic Logs <ArrowRight className="ml-2 w-4 h-4" />
+                </Link>
+              </Button>
+            </div>
           </section>
         )}
 
@@ -324,15 +322,13 @@ export default function CommunityTestimonyPage() {
               </Card>
             ))}
           </div>
-          {publicEvents.length > 4 && (
-            <div className="flex justify-center">
-              <Button asChild variant="outline" className="h-14 rounded-2xl border-primary/10 bg-white px-8 font-black uppercase tracking-widest text-xs text-primary">
-                <Link href="/community/highlights">
-                  See More Highlights <ArrowRight className="ml-2 w-4 h-4" />
-                </Link>
-              </Button>
-            </div>
-          )}
+          <div className="flex justify-center">
+            <Button asChild variant="outline" className="h-14 rounded-2xl border-primary/10 bg-white px-8 font-black uppercase tracking-widest text-xs text-primary">
+              <Link href="/community/highlights">
+                See All Institutional Highlights <ArrowRight className="ml-2 w-4 h-4" />
+              </Link>
+            </Button>
+          </div>
         </section>
 
         {/* 4. TESTIMONY MARQUEE SECTION */}
