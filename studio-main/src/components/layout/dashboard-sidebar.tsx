@@ -286,13 +286,13 @@ export function DashboardSidebar({ onClose }: SidebarProps) {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 overflow-hidden">
             {!isSuperAdmin && schoolLogo ? (
-              <div className="w-10 h-10 rounded-xl bg-white p-1.5 flex items-center justify-center shrink-0 shadow-lg">
+              <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shrink-0 shadow-lg overflow-hidden">
                 <img src={schoolLogo} alt="School Logo" className="w-full h-full object-contain" />
               </div>
             ) : isSuperAdmin && (
-              <div className="bg-secondary p-1.5 rounded-lg shrink-0">
+              <div className="bg-secondary rounded-lg shrink-0 h-10 w-10 overflow-hidden flex items-center justify-center">
                 {platformLogo ? (
-                  <img src={platformLogo} alt={platformSettings.name} className="w-6 h-6 object-contain" />
+                  <img src={platformLogo} alt={platformSettings.name} className="w-full h-full object-contain" />
                 ) : (
                   <Building2 className="w-6 h-6 text-primary" />
                 )}

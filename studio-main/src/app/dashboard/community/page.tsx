@@ -32,6 +32,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { fileToDataUrl, getApiErrorMessage } from "@/lib/api/errors";
+import { SchoolHierarchyManager } from "@/components/dashboard/school-hierarchy-manager";
 
 export default function CommunityPage() {
   const { user } = useAuth();
@@ -66,6 +67,7 @@ export default function CommunityPage() {
   });
 
   const isExecutive = ["CEO", "CTO", "COO", "INV", "DESIGNER", "SUPER_ADMIN"].includes(user?.role || "");
+  const isSchoolAdmin = user?.role === "SCHOOL_ADMIN" || user?.role === "SUB_ADMIN";
   const publishedBlogs = blogs.filter(blog => blog.is_published);
   const unpublishedBlogs = blogs.filter(blog => !blog.is_published);
   const filteredBlogs = publishedBlogs.filter(blog =>
@@ -234,6 +236,10 @@ export default function CommunityPage() {
       onError: (error: any) => toast({ variant: "destructive", title: "Delete Failed", description: getApiErrorMessage(error, "Could not delete this strategic log.") }),
     });
   };
+
+  if (isSchoolAdmin && user?.school?.id) {
+    return <SchoolHierarchyManager schoolId={user.school.id} schoolName={user.school.name} />;
+  }
 
   if (blogsLoading) {
     return (

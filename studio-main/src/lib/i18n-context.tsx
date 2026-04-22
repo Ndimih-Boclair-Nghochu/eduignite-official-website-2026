@@ -200,6 +200,9 @@ const backendTextTranslations: TranslationDict = {
   "connected": { en: "Connected", fr: "Connecte" },
   "live": { en: "Live", fr: "En direct" },
   "websocket error": { en: "WebSocket Error", fr: "Erreur WebSocket" },
+  "active sync": { en: "Active sync", fr: "Synchronisation active" },
+  "sync pending": { en: "Sync pending", fr: "Synchronisation en attente" },
+  "group sync active": { en: "Group sync active", fr: "Synchronisation du groupe active" },
 };
 
 interface I18nContextType {

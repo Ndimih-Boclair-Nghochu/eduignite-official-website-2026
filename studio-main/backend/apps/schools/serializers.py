@@ -360,4 +360,8 @@ class SchoolSettingsSerializer(serializers.ModelSerializer):
             'term',
             'allow_ai_features',
             'ai_request_limit',
+            'sections',
+            'class_levels',
+            'departments',
+            'streams',
         ]

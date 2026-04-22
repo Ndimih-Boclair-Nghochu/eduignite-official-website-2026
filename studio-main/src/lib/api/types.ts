@@ -50,6 +50,10 @@ export interface SchoolSettings {
   allow_ai_features: boolean;
   ai_request_limit: number;
   licence_expiry?: string;
+  sections?: string[];
+  class_levels?: string[];
+  departments?: string[];
+  streams?: string[];
 }
 
 export interface School {

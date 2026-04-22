@@ -215,13 +215,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <header className="md:hidden sticky top-0 z-20 flex items-center justify-between gap-3 px-3 py-3 bg-primary/95 backdrop-blur text-white shrink-0">
           <div className="flex items-center gap-2 overflow-hidden">
             {!isPlatformExecutive && schoolLogo ? (
-              <div className="w-6 h-6 rounded bg-white p-0.5 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center shrink-0 overflow-hidden">
                 <img src={schoolLogo} alt="Logo" className="w-full h-full object-contain" />
               </div>
             ) : isPlatformExecutive ? (
               <div className="bg-secondary p-1 rounded-lg shrink-0">
                 {platformLogo ? (
-                  <img src={platformLogo} alt={platformSettings.name} className="w-4 h-4 object-contain" />
+                  <img src={platformLogo} alt={platformSettings.name} className="w-full h-full object-contain" />
                 ) : (
                   <Building2 className="w-4 h-4 text-primary" />
                 )}
@@ -272,7 +272,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <div className="flex items-center gap-2">
                       <div className="p-1.5 bg-primary/5 rounded-lg border border-primary/10">
                         {schoolLogo ? (
-                          <img src={schoolLogo} alt="School Logo" className="w-4 h-4 object-contain" />
+                          <img src={schoolLogo} alt="School Logo" className="w-full h-full object-contain" />
                         ) : (
                           <Building2 className="w-4 h-4 text-primary" />
                         )}

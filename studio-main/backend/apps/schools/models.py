@@ -202,6 +202,26 @@ class SchoolSettings(models.Model):
     )
     allow_ai_features = models.BooleanField(default=True)
     ai_request_limit = models.IntegerField(default=1000)
+    sections = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='School sections such as English, French, Bilingual or Technical.',
+    )
+    class_levels = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Registered class levels such as Form 1, Form 2, Lower Sixth.',
+    )
+    departments = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Academic or administrative departments in the school.',
+    )
+    streams = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='Optional streams/specialisations such as General, Commercial, Industrial.',
+    )
 
     class Meta:
         verbose_name = 'School Settings'
