@@ -855,14 +855,18 @@ export interface CreateStudentRequest {
 export type UpdateStudentRequest = Partial<CreateStudentRequest>;
 
 export interface BulkStudentUploadRequest {
-  file: File;
   student_class: string;
+  generation_count?: number;
   class_level?: string;
   section?: string;
+  department?: string;
+  stream?: string;
+  batch_name?: string;
   admission_date?: string;
   guardian_name?: string;
   guardian_phone?: string;
   guardian_whatsapp?: string;
+  file?: File;
 }
 
 export interface LinkParentRequest {

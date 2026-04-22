@@ -3,7 +3,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 import uuid as _uuid
 
-from .models import Student, ParentStudentLink
+from .models import Student, ParentStudentLink, StudentActivationToken
 from apps.users.serializers import UserListSerializer as UserBasicSerializer
 
 User = get_user_model()
@@ -380,3 +380,24 @@ class HonourRollSerializer(serializers.ModelSerializer):
             annual_average__gt=obj.annual_average
         ).count()
         return count + 1
+
+
+class StudentActivationTokenSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StudentActivationToken
+        fields = [
+            'id',
+            'matricule',
+            'student_name',
+            'student_class',
+            'class_level',
+            'section',
+            'department',
+            'stream',
+            'batch_name',
+            'is_used',
+            'used_at',
+            'created',
+            'modified',
+        ]
+        read_only_fields = ['id', 'matricule', 'is_used', 'used_at', 'created', 'modified']

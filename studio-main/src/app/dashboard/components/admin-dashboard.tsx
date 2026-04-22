@@ -14,16 +14,17 @@ import { useUsers } from "@/lib/hooks/useUsers";
 import { usePayments } from "@/lib/hooks/useFees";
 import { useFeeStructures } from "@/lib/hooks/useFees";
 import { DATA_PERIODS } from "./dashboard-mock-data";
+import { resolveMediaUrl } from "@/lib/media";
 
 export function AdminDashboard() {
   const { user } = useAuth();
   const { data: studentsResp, isLoading: studentsLoading } = useStudents();
-  const { data: teachersResp, isLoading: teachersLoading } = useUsers({ role: 'TEACHER' });
+  const { data: staffResp, isLoading: staffLoading } = useUsers({ role: 'SCHOOL_ADMIN,SUB_ADMIN,TEACHER,BURSAR,LIBRARIAN' });
   const { data: paymentsResp } = usePayments();
   const { data: feesResp } = useFeeStructures();
 
   const totalStudents = studentsResp?.count ?? 0;
-  const totalTeachers = teachersResp?.count ?? 0;
+  const totalStaff = staffResp?.count ?? 0;
 
   const confirmedPayments = paymentsResp?.results?.filter(p => p.status === 'Confirmed') ?? [];
   const totalRevenue = confirmedPayments.reduce((sum, p) => sum + parseFloat(p.amount ?? '0'), 0);
@@ -74,7 +75,7 @@ export function AdminDashboard() {
         <div className="flex items-start sm:items-center gap-4">
           <div className="w-16 h-16 bg-primary rounded-[1.5rem] shadow-xl border-4 border-white flex items-center justify-center p-3">
             {user?.school?.logo ? (
-              <img src={user.school.logo} alt="School" className="w-full h-full object-contain" />
+              <img src={resolveMediaUrl(user.school.logo) || ""} alt="School" className="w-full h-full object-contain" />
             ) : (
               <Building2 className="w-full h-full text-secondary" />
             )}
@@ -100,7 +101,7 @@ export function AdminDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: "Active Enrollment", value: totalStudents, isLoading: studentsLoading, icon: GraduationCap, color: "text-blue-600", bg: "bg-blue-50" },
-          { label: "Staff Registry", value: totalTeachers, isLoading: teachersLoading, icon: Users, color: "text-purple-600", bg: "bg-purple-50" },
+          { label: "Staff Registry", value: totalStaff, isLoading: staffLoading, icon: Users, color: "text-purple-600", bg: "bg-purple-50" },
           { label: "Collection Velocity", value: `${totalRevenue > 0 ? Math.round((totalRevenue / 100000) * 100) : 0}%`, isLoading: false, icon: Coins, color: "text-emerald-600", bg: "bg-emerald-50" },
           { label: "System Integrity", value: "Optimal", isLoading: false, icon: ShieldCheck, color: "text-primary", bg: "bg-primary/5" },
         ].map((stat, i) => (

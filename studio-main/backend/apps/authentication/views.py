@@ -276,21 +276,80 @@ class ActivateAccountView(APIView):
         matricule = serializer.validated_data['matricule']
         new_password = serializer.validated_data['new_password']
 
-        try:
-            user = User.objects.get(matricule=matricule)
-        except User.DoesNotExist:
-            return Response(
-                {'detail': 'User not found'},
-                status=status.HTTP_404_NOT_FOUND,
+        user = User.objects.filter(matricule=matricule).first()
+
+        if user:
+            if user.has_usable_password() and not user.check_password('!pending_activation'):
+                return Response(
+                    {'detail': 'This matricule is already used.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            try:
+                from apps.students.models import StudentActivationToken, Student
+                token = StudentActivationToken.objects.get(matricule=matricule)
+            except StudentActivationToken.DoesNotExist:
+                return Response(
+                    {'detail': 'User not found'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            if token.is_used:
+                return Response(
+                    {'detail': 'This matricule is already used.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            from apps.students.serializers import StudentCreateSerializer
+
+            student_serializer = StudentCreateSerializer()
+            school = token.school
+            admission_number = student_serializer._generate_admission_number(school)
+            email = student_serializer._generate_placeholder_email(token.matricule)
+
+            user = User.objects.create_user(
+                matricule=token.matricule,
+                name=token.student_name or f'Student {token.matricule}',
+                email=email,
+                role='STUDENT',
+                school=school,
+                password='!pending_activation',
             )
+
+            student = Student.objects.create(
+                user=user,
+                school=school,
+                student_class=token.student_class,
+                class_level=token.class_level,
+                section=token.section,
+                guardian_name='',
+                guardian_phone='',
+                guardian_whatsapp='',
+                admission_number=admission_number,
+                admission_date=__import__('datetime', fromlist=['date']).date.today(),
+                gender='other',
+            )
+            student.generate_qr_code()
+
+            token.is_used = True
+            token.used_at = __import__('django.utils.timezone', fromlist=['now']).now()
+            token.used_by = user
+            token.save(update_fields=['is_used', 'used_at', 'used_by', 'modified'])
 
         user.set_password(new_password)
         user.save(update_fields=['password'])
 
-        return Response(
-            {'detail': 'Account activated successfully'},
-            status=status.HTTP_200_OK,
-        )
+        refresh = RefreshToken.for_user(user)
+        user.last_login = __import__('django.utils.timezone', fromlist=['now']).now()
+        user.save(update_fields=['last_login'])
+
+        response_data = {
+            'access_token': str(refresh.access_token),
+            'refresh_token': str(refresh),
+            'user': build_user_payload(user),
+        }
+
+        return Response(response_data, status=status.HTTP_200_OK)
 
 
 class ChangePasswordView(APIView):

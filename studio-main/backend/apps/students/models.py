@@ -109,3 +109,42 @@ class ParentStudentLink(TimeStampedModel):
         if self.is_primary:
             ParentStudentLink.objects.filter(student=self.student, is_primary=True).exclude(pk=self.pk).update(is_primary=False)
         super().save(*args, **kwargs)
+
+
+class StudentActivationToken(TimeStampedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school = models.ForeignKey('schools.School', on_delete=models.CASCADE, related_name='student_activation_tokens')
+    matricule = models.CharField(max_length=50, unique=True, db_index=True)
+    student_name = models.CharField(max_length=255, blank=True, default='')
+    student_class = models.CharField(max_length=100)
+    class_level = models.CharField(max_length=20, choices=Student.CLASS_LEVEL_CHOICES, default='form1')
+    section = models.CharField(max_length=50, choices=Student.SECTION_CHOICES, default='general')
+    department = models.CharField(max_length=100, blank=True, default='')
+    stream = models.CharField(max_length=100, blank=True, default='')
+    batch_name = models.CharField(max_length=255, blank=True, default='')
+    generated_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='generated_student_activation_tokens',
+    )
+    is_used = models.BooleanField(default=False)
+    used_by = models.OneToOneField(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='used_student_activation_token',
+    )
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['student_class', 'matricule']
+        indexes = [
+            models.Index(fields=['school', 'student_class']),
+            models.Index(fields=['school', 'is_used']),
+        ]
+
+    def __str__(self):
+        return f'{self.matricule} - {self.student_class}'

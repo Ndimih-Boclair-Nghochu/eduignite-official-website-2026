@@ -1,5 +1,6 @@
 import csv
 from io import StringIO
+import uuid as _uuid
 
 from django.http import HttpResponse
 from django.utils import timezone
@@ -9,10 +10,11 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from .models import Student, ParentStudentLink
+from .models import Student, ParentStudentLink, StudentActivationToken
 from .serializers import (
     StudentListSerializer, StudentDetailSerializer, StudentCreateSerializer,
-    StudentUpdateSerializer, ParentStudentLinkSerializer, HonourRollSerializer
+    StudentUpdateSerializer, ParentStudentLinkSerializer, HonourRollSerializer,
+    StudentActivationTokenSerializer,
 )
 
 
@@ -151,6 +153,55 @@ class StudentViewSet(viewsets.ModelViewSet):
         if 'commercial' in label or 'commerce' in label:
             return 'commercial'
         return 'general'
+
+    def _generate_activation_matricule(self):
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        while True:
+            matricule = f'STU{_uuid.uuid4().hex[:8].upper()}'
+            if StudentActivationToken.objects.filter(matricule=matricule).exists():
+                continue
+            if User.objects.filter(matricule=matricule).exists():
+                continue
+            return matricule
+
+    def _render_activation_sheet_document(self, school, generated_tokens, title_suffix):
+        rows = ''.join(
+            f"""
+            <tr>
+              <td style="padding:10px;border:1px solid #ddd;">{index}</td>
+              <td style="padding:10px;border:1px solid #ddd;">{token.student_name or 'Student activation slot'}</td>
+              <td style="padding:10px;border:1px solid #ddd;">{token.matricule}</td>
+              <td style="padding:10px;border:1px solid #ddd;">{token.student_class}</td>
+              <td style="padding:10px;border:1px solid #ddd;">{token.get_class_level_display()}</td>
+              <td style="padding:10px;border:1px solid #ddd;">{token.get_section_display()}</td>
+            </tr>
+            """
+            for index, token in enumerate(generated_tokens, start=1)
+        )
+        return f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Student Activation Sheet - {title_suffix}</title></head>
+<body style="font-family:Arial,sans-serif;padding:32px;color:#111;">
+  <h1 style="margin:0 0 8px;">{school.name}</h1>
+  <p style="margin:0 0 24px;">Student activation sheet for {title_suffix}</p>
+  <table style="border-collapse:collapse;width:100%;">
+    <thead>
+      <tr>
+        <th style="padding:10px;border:1px solid #ddd;text-align:left;">#</th>
+        <th style="padding:10px;border:1px solid #ddd;text-align:left;">Student Name</th>
+        <th style="padding:10px;border:1px solid #ddd;text-align:left;">Matricule</th>
+        <th style="padding:10px;border:1px solid #ddd;text-align:left;">Class</th>
+        <th style="padding:10px;border:1px solid #ddd;text-align:left;">Level</th>
+        <th style="padding:10px;border:1px solid #ddd;text-align:left;">Section</th>
+      </tr>
+    </thead>
+    <tbody>{rows}</tbody>
+  </table>
+  <p style="margin-top:24px;">Each matricule can only activate one account. Once used, the platform will reject any second activation attempt.</p>
+</body>
+</html>"""
 
     def _iter_upload_rows(self, decoded):
         stripped_lines = [line for line in decoded.splitlines() if line.strip()]
@@ -296,13 +347,71 @@ class StudentViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def bulk_upload(self, request):
-        """Bulk create students from a CSV class list."""
+        """Generate student activation matricules for a class or bulk create students from CSV."""
         if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
             raise PermissionDenied("Only school administrators can bulk register students.")
 
+        generation_count = int(request.data.get('generation_count') or request.data.get('count') or 0)
+        student_class = request.data.get('student_class', '').strip()
+        class_level = request.data.get('class_level', '') or self._infer_class_level(student_class)
+        section = request.data.get('section', '') or self._infer_section(student_class)
+        department = request.data.get('department', '').strip()
+        stream = request.data.get('stream', '').strip()
+        batch_name = request.data.get('batch_name', '').strip() or student_class
+
+        if generation_count:
+            if not student_class:
+                return Response(
+                    {'detail': 'student_class is required for matricule generation.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if generation_count < 1:
+                return Response(
+                    {'detail': 'generation_count must be at least 1.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if generation_count > 500:
+                return Response(
+                    {'detail': 'generation_count cannot exceed 500 in one batch.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            generated_tokens = []
+            for _ in range(generation_count):
+                token = StudentActivationToken.objects.create(
+                    school=request.user.school,
+                    matricule=self._generate_activation_matricule(),
+                    student_class=student_class,
+                    class_level=class_level,
+                    section=section,
+                    department=department,
+                    stream=stream,
+                    batch_name=batch_name,
+                    generated_by=request.user,
+                )
+                generated_tokens.append(token)
+
+            return Response(
+                {
+                    'created_count': len(generated_tokens),
+                    'failed_count': 0,
+                    'detail': f'{len(generated_tokens)} activation matricules generated for {student_class}.',
+                    'generated_students': StudentActivationTokenSerializer(generated_tokens, many=True).data,
+                    'document_html': self._render_activation_sheet_document(
+                        request.user.school,
+                        generated_tokens,
+                        batch_name or student_class,
+                    ),
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
         upload = request.FILES.get('file')
         if not upload:
-            return Response({'detail': 'CSV file is required.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'detail': 'Provide generation_count to generate matricules or upload a CSV file.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             decoded = upload.read().decode('utf-8-sig')
@@ -313,9 +422,9 @@ class StudentViewSet(viewsets.ModelViewSet):
         failed_rows = []
 
         base_payload = {
-            'student_class': request.data.get('student_class', ''),
-            'class_level': request.data.get('class_level', '') or self._infer_class_level(request.data.get('student_class', '')),
-            'section': request.data.get('section', '') or self._infer_section(request.data.get('student_class', '')),
+            'student_class': student_class,
+            'class_level': class_level,
+            'section': section,
             'admission_date': request.data.get('admission_date') or timezone.now().date(),
             'guardian_name': request.data.get('guardian_name', ''),
             'guardian_phone': request.data.get('guardian_phone', ''),
@@ -399,6 +508,22 @@ class StudentViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("Only school staff can download activation sheets.")
 
         class_name = request.query_params.get('class_name')
+        token_queryset = StudentActivationToken.objects.filter(school=request.user.school)
+        if class_name:
+            token_queryset = token_queryset.filter(student_class=class_name)
+
+        generated_tokens = list(token_queryset.order_by('student_class', 'matricule'))
+        if generated_tokens:
+            document = self._render_activation_sheet_document(
+                request.user.school,
+                generated_tokens,
+                class_name or 'All Classes',
+            )
+            response = HttpResponse(document, content_type='text/html')
+            filename_suffix = (class_name or 'all_classes').replace(' ', '_')
+            response['Content-Disposition'] = f'attachment; filename="student_activation_sheet_{filename_suffix}.html"'
+            return response
+
         students = self.get_queryset()
         if class_name:
             students = students.filter(student_class=class_name)

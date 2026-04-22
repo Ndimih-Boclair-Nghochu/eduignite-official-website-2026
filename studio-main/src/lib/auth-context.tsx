@@ -594,7 +594,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const activateAccount = async (matricule: string, password: string, confirmPassword: string) => {
     setIsLoading(true);
     try {
-      await authService.activateAccount(matricule, password, confirmPassword);
+      const response = await authService.activateAccount(matricule, password, confirmPassword);
+      if (response.access && response.refresh) {
+        setTokens(response.access, response.refresh);
+      }
+
+      const user = normalizeUser(await authService.getCurrentUser());
+      if (user) {
+        const mappedUser: User = {
+          id: user.id || "",
+          uid: user.uid || `user_${user.id}`,
+          name: user.name || "",
+          email: user.email || "",
+          phone: user.phone,
+          whatsapp: user.whatsapp,
+          role: (user.role as UserRole) || "STUDENT",
+          schoolId: user.schoolId || null,
+          avatar: resolveMediaUrl(user.avatar),
+          school: mapSchoolInfo(user.school),
+          isLicensePaid: user.isLicensePaid || false,
+          aiRequestCount: user.aiRequestCount,
+          annualAvg: user.annualAvg,
+        };
+        setUserData(mappedUser);
+
+        const boardRoles = ["CEO", "CTO", "COO", "INV", "SUPER_ADMIN", "DESIGNER"];
+        router.push(boardRoles.includes(mappedUser.role) ? "/dashboard" : "/welcome");
+      }
     } finally {
       setIsLoading(false);
     }

@@ -60,7 +60,7 @@ class MessageCreateSerializer(serializers.ModelSerializer):
 class ConversationListSerializer(serializers.ModelSerializer):
     participants = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
-    participant_count = serializers.IntegerField(source='participants.count', read_only=True)
+    participant_count = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(source='created_by.name', read_only=True)
 
     class Meta:
@@ -77,12 +77,15 @@ class ConversationListSerializer(serializers.ModelSerializer):
         participants = obj.participants.all()[:3]
         return [
             {
-                'id': p.id,
-                'name': p.get_full_name(),
+                'id': str(p.id),
+                'name': p.name,
                 'avatar': p.avatar or None,  # URLField is a plain string
             }
             for p in participants
         ]
+
+    def get_participant_count(self, obj):
+        return obj.participants.count()
 
     def get_unread_count(self, obj):
         request = self.context.get('request')

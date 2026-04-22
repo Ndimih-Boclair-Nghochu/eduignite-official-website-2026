@@ -25,17 +25,37 @@ export const studentsService = {
   },
 
   async bulkUploadStudents(payload: BulkStudentUploadRequest): Promise<any> {
-    const formData = new FormData();
-    formData.append('file', payload.file);
-    formData.append('student_class', payload.student_class);
-    formData.append('class_level', payload.class_level);
-    formData.append('section', payload.section);
-    if (payload.admission_date) formData.append('admission_date', payload.admission_date);
-    if (payload.guardian_name) formData.append('guardian_name', payload.guardian_name);
-    if (payload.guardian_phone) formData.append('guardian_phone', payload.guardian_phone);
-    if (payload.guardian_whatsapp) formData.append('guardian_whatsapp', payload.guardian_whatsapp);
-    const { data } = await apiClient.post(API.STUDENTS.BULK_UPLOAD, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    if (payload.file) {
+      const formData = new FormData();
+      formData.append('file', payload.file);
+      formData.append('student_class', payload.student_class);
+      if (payload.class_level) formData.append('class_level', payload.class_level);
+      if (payload.section) formData.append('section', payload.section);
+      if (payload.department) formData.append('department', payload.department);
+      if (payload.stream) formData.append('stream', payload.stream);
+      if (payload.batch_name) formData.append('batch_name', payload.batch_name);
+      if (payload.admission_date) formData.append('admission_date', payload.admission_date);
+      if (payload.guardian_name) formData.append('guardian_name', payload.guardian_name);
+      if (payload.guardian_phone) formData.append('guardian_phone', payload.guardian_phone);
+      if (payload.guardian_whatsapp) formData.append('guardian_whatsapp', payload.guardian_whatsapp);
+      const { data } = await apiClient.post(API.STUDENTS.BULK_UPLOAD, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return data;
+    }
+
+    const { data } = await apiClient.post(API.STUDENTS.BULK_UPLOAD, {
+      student_class: payload.student_class,
+      generation_count: payload.generation_count,
+      class_level: payload.class_level,
+      section: payload.section,
+      department: payload.department,
+      stream: payload.stream,
+      batch_name: payload.batch_name,
+      admission_date: payload.admission_date,
+      guardian_name: payload.guardian_name,
+      guardian_phone: payload.guardian_phone,
+      guardian_whatsapp: payload.guardian_whatsapp,
     });
     return data;
   },

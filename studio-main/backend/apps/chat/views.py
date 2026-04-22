@@ -46,7 +46,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
                 ConversationParticipant.objects.select_related('user')
             ),
             'participants',
-        ).order_by('-last_message_at', '-created_at').distinct()
+        ).order_by('-last_message_at', '-created_at')
 
     def get_serializer_class(self):
         if self.action == 'list':

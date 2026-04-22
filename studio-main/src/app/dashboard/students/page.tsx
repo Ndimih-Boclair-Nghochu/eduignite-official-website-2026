@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Plus, Search, Sparkles, Upload, UserPlus, Users } from "lucide-react";
+import { FileText, Loader2, Plus, Search, Sparkles, Upload, UserPlus, Users } from "lucide-react";
 import type { BulkStudentUploadRequest, CreateStudentRequest, Student, UpdateStudentRequest } from "@/lib/api/types";
 import { studentsService } from "@/lib/api/services/students.service";
 
@@ -99,6 +99,16 @@ type BulkUploadResult = {
   created_count?: number;
   failed_count?: number;
   detail?: string;
+  document_html?: string;
+  generated_students?: Array<{
+    id: string;
+    matricule: string;
+    student_class: string;
+    class_level: string;
+    section: string;
+    department?: string;
+    stream?: string;
+  }>;
   created_students?: Array<{
     id: string;
     name: string;
@@ -133,18 +143,16 @@ export default function StudentsPage() {
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [editData, setEditData] = useState<UpdateStudentRequest>({});
   const [isBulkOpen, setIsBulkOpen] = useState(false);
-  const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [bulkResult, setBulkResult] = useState<BulkUploadResult | null>(null);
   const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
   const [bulkData, setBulkData] = useState<BulkStudentUploadRequest>({
-    file: new File([], "students.csv"),
     student_class: "",
+    generation_count: 30,
     class_level: undefined,
     section: undefined,
-    admission_date: "",
-    guardian_name: "",
-    guardian_phone: "",
-    guardian_whatsapp: "",
+    department: "",
+    stream: "",
+    batch_name: "",
   });
 
   const studentsQuery = useStudents({
@@ -270,13 +278,12 @@ export default function StudentsPage() {
     }
   };
 
-  const downloadBulkTemplate = () => {
-    const csv = "name,email,phone,guardian_name,guardian_phone,admission_number\nJane Doe,jane@example.com,+237600000000,Parent Doe,+237611111111,\nJohn Smith,,,,,\n";
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const downloadActivationSheet = (html: string, className: string) => {
+    const blob = new Blob([html], { type: "text/html;charset=utf-8;" });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "student_bulk_template.csv";
+    link.download = `${(className || "student_activation_sheet").replace(/\s+/g, "_").toLowerCase()}_activation_sheet.html`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -284,36 +291,36 @@ export default function StudentsPage() {
   };
 
   const handleBulkUpload = async () => {
-    if (!bulkFile || !bulkData.student_class.trim()) {
+    if (!bulkData.student_class.trim() || !bulkData.generation_count || bulkData.generation_count < 1) {
       toast({
         variant: "destructive",
-        title: "Bulk upload incomplete",
-        description: "Choose a CSV file and provide the target class before uploading.",
+        title: "Matricule generation incomplete",
+        description: "Provide the target class and the number of matricules to generate.",
       });
       return;
     }
 
     setIsBulkSubmitting(true);
     try {
-      const result = await studentsService.bulkUploadStudents({
-        ...bulkData,
-        file: bulkFile,
-      });
+      const result = await studentsService.bulkUploadStudents(bulkData);
       setBulkResult(result);
+      if (result.document_html) {
+        downloadActivationSheet(result.document_html, bulkData.student_class);
+      }
       toast({
-        title: "Bulk registration complete",
-        description: result.detail || `${result.created_count || 0} students were registered for ${bulkData.student_class}.`,
+        title: "Matricules generated",
+        description: result.detail || `${result.created_count || 0} matricules were generated for ${bulkData.student_class}.`,
       });
     } catch (error: any) {
       const responseData = error?.response?.data as BulkUploadResult | undefined;
       setBulkResult(responseData || null);
       toast({
         variant: "destructive",
-        title: "Bulk upload failed",
+        title: "Generation failed",
         description:
           responseData?.detail ||
           responseData?.failed_rows?.[0]?.reason ||
-          "We could not process the uploaded class list.",
+          "We could not generate the class matricules.",
       });
     } finally {
       setIsBulkSubmitting(false);
@@ -361,13 +368,9 @@ export default function StudentsPage() {
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Button variant="outline" className="h-14 gap-2 rounded-2xl px-6 font-black uppercase tracking-widest text-xs" onClick={downloadBulkTemplate}>
-            <Upload className="h-5 w-5" />
-            Download CSV Template
-          </Button>
           <Button variant="outline" className="h-14 gap-2 rounded-2xl px-6 font-black uppercase tracking-widest text-xs" onClick={() => setIsBulkOpen(true)}>
-            <Upload className="h-5 w-5" />
-            Bulk Register
+            <FileText className="h-5 w-5" />
+            Generate Matricules
           </Button>
           <Button className="h-14 gap-2 rounded-2xl px-8 font-black uppercase tracking-widest text-xs shadow-xl" onClick={openAdmissionDialog}>
             <Plus className="h-5 w-5" />
@@ -642,9 +645,9 @@ export default function StudentsPage() {
       <Dialog open={isBulkOpen} onOpenChange={setIsBulkOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto rounded-[2rem] border-none p-0 shadow-2xl sm:max-w-3xl">
           <DialogHeader className="bg-primary p-8 text-white">
-            <DialogTitle className="text-2xl font-black uppercase">Bulk Register Students</DialogTitle>
+            <DialogTitle className="text-2xl font-black uppercase">Generate Student Matricules</DialogTitle>
             <DialogDescription className="text-white/70">
-              Upload a CSV class list with student names. The system will generate matricules and temporary accounts automatically.
+              Choose the class placement and number of activation matricules. The platform prepares a printable activation sheet immediately.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6 p-8">
@@ -652,6 +655,17 @@ export default function StudentsPage() {
               <div className="space-y-2">
                 <Label>Target Class</Label>
                 <Input value={bulkData.student_class} onChange={(event) => setBulkData((current) => ({ ...current, student_class: event.target.value }))} placeholder="Form 1 A" />
+              </div>
+              <div className="space-y-2">
+                <Label>Number of Matricules</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={bulkData.generation_count || ""}
+                  onChange={(event) => setBulkData((current) => ({ ...current, generation_count: Number(event.target.value || 0) }))}
+                  placeholder="30"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Class Level (optional)</Label>
@@ -668,34 +682,46 @@ export default function StudentsPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Admission Date (optional)</Label>
-                <Input type="date" value={bulkData.admission_date || ""} onChange={(event) => setBulkData((current) => ({ ...current, admission_date: event.target.value }))} />
+                <Label>Department (optional)</Label>
+                <Input value={bulkData.department || ""} onChange={(event) => setBulkData((current) => ({ ...current, department: event.target.value }))} placeholder="Science Department" />
               </div>
               <div className="space-y-2">
-                <Label>Default Guardian Name (optional)</Label>
-                <Input value={bulkData.guardian_name || ""} onChange={(event) => setBulkData((current) => ({ ...current, guardian_name: event.target.value }))} />
+                <Label>Stream (optional)</Label>
+                <Input value={bulkData.stream || ""} onChange={(event) => setBulkData((current) => ({ ...current, stream: event.target.value }))} placeholder="General Education" />
               </div>
-              <div className="space-y-2">
-                <Label>Default Guardian Phone (optional)</Label>
-                <Input value={bulkData.guardian_phone || ""} onChange={(event) => setBulkData((current) => ({ ...current, guardian_phone: event.target.value }))} />
+              <div className="space-y-2 md:col-span-2">
+                <Label>Batch Name (optional)</Label>
+                <Input value={bulkData.batch_name || ""} onChange={(event) => setBulkData((current) => ({ ...current, batch_name: event.target.value }))} placeholder="Form 1 A - 2026 Intake" />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>CSV File</Label>
-              <Input type="file" accept=".csv,text/csv" onChange={(event) => setBulkFile(event.target.files?.[0] || null)} />
-              <p className="text-xs text-muted-foreground">Only student names are required. Extra columns are allowed and ignored when not needed. Supported examples: `name`, `email`, `phone`, `guardian_name`, `guardian_phone`, `admission_number`, `class_level`, `section`.</p>
+            <div className="rounded-2xl border border-primary/10 bg-accent/10 p-4 text-xs text-muted-foreground space-y-2">
+              <p className="font-black uppercase tracking-widest text-primary">How It Works</p>
+              <p>Each matricule is single-use and remains attached to the selected class, section, and level.</p>
+              <p>If a matricule has already been used, the activation flow now tells the student that the matricule is already used.</p>
+              <p>The downloaded activation sheet can be printed directly or saved as PDF from the browser.</p>
             </div>
 
             {bulkResult && (
               <Card className="border border-primary/10 shadow-none">
                 <CardHeader>
-                  <CardTitle className="text-base font-black text-primary">Bulk Upload Result</CardTitle>
+                  <CardTitle className="text-base font-black text-primary">Matricule Generation Result</CardTitle>
                   <CardDescription>
                     {bulkResult.detail || `${bulkResult.created_count} created, ${bulkResult.failed_count} failed.`}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {(bulkResult.generated_students || []).slice(0, 20).map((student: any) => (
+                    <div key={student.id} className="flex items-center justify-between rounded-xl border p-3">
+                      <div>
+                        <p className="font-bold text-primary">{student.student_class}</p>
+                        <p className="text-xs text-muted-foreground">{student.matricule} · {student.class_level?.replace?.("_", " ") || student.class_level}</p>
+                      </div>
+                      <Badge variant="outline" className="border-primary/10 font-bold text-primary uppercase">
+                        {student.section}
+                      </Badge>
+                    </div>
+                  ))}
                   {(bulkResult.created_students || []).slice(0, 10).map((student: any) => (
                     <div key={student.id} className="flex items-center justify-between rounded-xl border p-3">
                       <div>
@@ -717,6 +743,15 @@ export default function StudentsPage() {
                       Row {row.row}{row.name ? ` (${row.name})` : ""}: {row.reason || "This row failed validation."}
                     </div>
                   ))}
+                  {bulkResult.document_html && (
+                    <Button
+                      variant="outline"
+                      className="rounded-xl border-primary/10 font-bold text-primary"
+                      onClick={() => downloadActivationSheet(bulkResult.document_html || "", bulkData.student_class)}
+                    >
+                      Download Activation Sheet
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -724,7 +759,7 @@ export default function StudentsPage() {
           <DialogFooter className="border-t bg-accent/20 p-6">
             <Button onClick={handleBulkUpload} disabled={isBulkSubmitting} className="h-14 w-full gap-3 rounded-2xl font-black uppercase tracking-widest text-xs">
               {isBulkSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
-              Upload and Register
+              Generate Matricules
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -27,12 +27,13 @@ class InvoiceSerializer(serializers.ModelSerializer):
 class PaymentListSerializer(serializers.ModelSerializer):
     payer_name = serializers.CharField(source='payer.get_full_name', read_only=True)
     fee_name = serializers.CharField(source='fee_structure.name', read_only=True, allow_null=True)
+    bursar_name = serializers.CharField(source='bursar.get_full_name', read_only=True, allow_null=True)
 
     class Meta:
         model = Payment
         fields = [
             'id', 'reference_number', 'payer', 'payer_name', 'fee_name', 'amount',
-            'currency', 'payment_method', 'status', 'payment_date', 'created'
+            'currency', 'payment_method', 'status', 'payment_date', 'created', 'bursar_name'
         ]
         read_only_fields = ['id', 'reference_number', 'created']
 
@@ -54,21 +55,59 @@ class PaymentDetailSerializer(serializers.ModelSerializer):
 
 
 class PaymentCreateSerializer(serializers.ModelSerializer):
+    license_beneficiary = serializers.PrimaryKeyRelatedField(
+        queryset=None,
+        required=False,
+        allow_null=True,
+        write_only=True,
+    )
+    mark_license_paid = serializers.BooleanField(required=False, default=False, write_only=True)
+
     class Meta:
         model = Payment
         fields = [
             'payer', 'fee_structure', 'amount', 'currency', 'payment_method',
-            'payment_date', 'notes'
+            'payment_date', 'notes', 'license_beneficiary', 'mark_license_paid'
         ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        self.fields['license_beneficiary'].queryset = User.objects.filter(role='STUDENT')
 
     def validate_amount(self, value):
         if value <= 0:
             raise serializers.ValidationError("Amount must be greater than 0.")
         return value
 
+    def validate(self, attrs):
+        beneficiary = attrs.get('license_beneficiary')
+        should_mark_paid = attrs.get('mark_license_paid')
+        payer = attrs.get('payer')
+        request = self.context.get('request')
+        requester_school = getattr(getattr(request, 'user', None), 'school', None)
+
+        if beneficiary and requester_school and beneficiary.school_id != requester_school.id:
+            raise serializers.ValidationError({'license_beneficiary': 'The selected student must belong to your school.'})
+
+        if should_mark_paid and not beneficiary:
+            attrs['license_beneficiary'] = payer
+
+        beneficiary = attrs.get('license_beneficiary')
+        if attrs.get('mark_license_paid') and beneficiary and beneficiary.role != 'STUDENT':
+            raise serializers.ValidationError({'license_beneficiary': 'Platform charge payments can only be attached to student accounts.'})
+        return attrs
+
     def create(self, validated_data):
         # Bursar is set by the view
-        return Payment.objects.create(**validated_data)
+        beneficiary = validated_data.pop('license_beneficiary', None)
+        should_mark_paid = validated_data.pop('mark_license_paid', False)
+        payment = Payment.objects.create(**validated_data)
+        if should_mark_paid and beneficiary:
+            beneficiary.is_license_paid = True
+            beneficiary.save(update_fields=['is_license_paid'])
+        return payment
 
 
 class PaymentConfirmSerializer(serializers.Serializer):

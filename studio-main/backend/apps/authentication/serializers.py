@@ -115,8 +115,15 @@ class ActivateAccountSerializer(serializers.Serializer):
 
     def validate_matricule(self, value):
         """Validate that user exists."""
-        if not User.objects.filter(matricule=value).exists():
-            raise serializers.ValidationError('User not found.')
+        if User.objects.filter(matricule=value).exists():
+            return value
+        try:
+            from apps.students.models import StudentActivationToken
+            if StudentActivationToken.objects.filter(matricule=value).exists():
+                return value
+        except Exception:
+            pass
+        raise serializers.ValidationError('User not found.')
         return value
 
 

@@ -171,7 +171,6 @@ class UserCreateSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False,
         allow_blank=True,
-        validators=[validate_password],
     )
     password_confirm = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
@@ -229,6 +228,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         if password or password_confirm:
             if password != password_confirm:
                 raise serializers.ValidationError({'password_confirm': 'Passwords do not match.'})
+            validate_password(password)
         else:
             data['password'] = ''
             data['password_confirm'] = ''
