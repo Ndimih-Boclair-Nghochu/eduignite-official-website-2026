@@ -29,27 +29,32 @@ export function BursarDashboard() {
   const feeStructureCount = feesResp?.results?.length ?? 0;
 
   // Revenue trends from API
-  const revenueTrends = revenueReport?.monthly_trend?.map(m => ({
-    name: m.month,
-    revenue: Number(m.amount),
-  })) ?? [];
+  const revenueTrends = Array.isArray(revenueReport?.monthly_trend)
+    ? revenueReport.monthly_trend.map((month: any) => ({
+        name: month.month,
+        revenue: Number(month.amount),
+      }))
+    : [];
 
   // Fee distribution from API
-  const feeDistribution = revenueReport?.by_fee_type?.map((f, i) => ({
-    name: f.name,
-    value: Number(f.amount),
+  const feeTypeEntries = revenueReport?.by_fee_type && typeof revenueReport.by_fee_type === "object"
+    ? Object.entries(revenueReport.by_fee_type)
+    : [];
+  const feeDistribution = feeTypeEntries.map(([name, amount], i) => ({
+    name,
+    value: Number(amount),
     color: ['#264D73','#67D0E4','#FCD116','#CE1126','#10B981'][i % 5],
-  })) ?? [];
+  }));
 
   // Recent collections from API
   const recentCollections = paymentsResp?.results?.slice(0, 5).map(p => ({
-    name: p.payer?.name ?? 'Unknown',
+    name: p.payer_name ?? p.payer?.name ?? 'Unknown',
     amount: Number(p.amount),
-    method: p.payment_method,
+    method: p.fee_name ?? p.payment_method,
     date: p.payment_date,
     status: p.status,
     avatar: p.payer?.avatar,
-    id: p.payer?.id ?? 'N/A',
+    id: p.payer ? String(p.payer) : 'N/A',
   })) ?? [];
 
   return (

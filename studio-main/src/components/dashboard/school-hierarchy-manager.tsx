@@ -13,11 +13,18 @@ import { getApiErrorMessage } from "@/lib/api/errors";
 
 type HierarchyKey = "sections" | "class_levels" | "departments" | "streams";
 
-const DEFAULT_HIERARCHY: Record<HierarchyKey, string[]> = {
+const SUGGESTED_HIERARCHY: Record<HierarchyKey, string[]> = {
   sections: ["English Section", "French Section", "Bilingual Section", "Technical Section"],
   class_levels: ["Form 1", "Form 2", "Form 3", "Form 4", "Form 5", "Lower Sixth", "Upper Sixth"],
   departments: ["Science", "Arts", "Commercial", "Industrial", "Languages", "Administration"],
   streams: ["General Education", "Technical Education", "Commercial", "Industrial", "Bilingual"],
+};
+
+const EMPTY_HIERARCHY: Record<HierarchyKey, string[]> = {
+  sections: [],
+  class_levels: [],
+  departments: [],
+  streams: [],
 };
 
 const CONFIG: Array<{
@@ -59,7 +66,7 @@ interface SchoolHierarchyManagerProps {
 
 export function SchoolHierarchyManager({ schoolId, schoolName }: SchoolHierarchyManagerProps) {
   const { toast } = useToast();
-  const [hierarchy, setHierarchy] = useState<Record<HierarchyKey, string[]>>(DEFAULT_HIERARCHY);
+  const [hierarchy, setHierarchy] = useState<Record<HierarchyKey, string[]>>(EMPTY_HIERARCHY);
   const [drafts, setDrafts] = useState<Record<HierarchyKey, string>>({
     sections: "",
     class_levels: "",
@@ -77,10 +84,10 @@ export function SchoolHierarchyManager({ schoolId, schoolName }: SchoolHierarchy
         const settings = await schoolsService.getSchoolSettings(schoolId);
         if (!active) return;
         setHierarchy({
-          sections: settings.sections?.length ? settings.sections : DEFAULT_HIERARCHY.sections,
-          class_levels: settings.class_levels?.length ? settings.class_levels : DEFAULT_HIERARCHY.class_levels,
-          departments: settings.departments?.length ? settings.departments : DEFAULT_HIERARCHY.departments,
-          streams: settings.streams?.length ? settings.streams : DEFAULT_HIERARCHY.streams,
+          sections: settings.sections ?? [],
+          class_levels: settings.class_levels ?? [],
+          departments: settings.departments ?? [],
+          streams: settings.streams ?? [],
         });
       } catch (error) {
         toast({
@@ -222,6 +229,41 @@ export function SchoolHierarchyManager({ schoolId, schoolName }: SchoolHierarchy
                     </button>
                   </Badge>
                 ))}
+                {hierarchy[section.key].length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    No {section.title.toLowerCase()} saved yet. Add the exact names your school wants to use.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                  Optional Suggestions
+                </Label>
+                <div className="flex flex-wrap gap-2">
+                  {SUGGESTED_HIERARCHY[section.key]
+                    .filter((item) => !hierarchy[section.key].some((existing) => existing.toLowerCase() === item.toLowerCase()))
+                    .map((item) => (
+                      <Button
+                        key={item}
+                        type="button"
+                        variant="outline"
+                        className="h-8 rounded-xl text-[10px] font-black uppercase tracking-widest"
+                        onClick={() =>
+                          setHierarchy((prev) => ({
+                            ...prev,
+                            [section.key]: [...prev[section.key], item],
+                          }))
+                        }
+                      >
+                        <Plus className="mr-1 h-3 w-3" />
+                        {item}
+                      </Button>
+                    ))}
+                  {SUGGESTED_HIERARCHY[section.key].every((item) =>
+                    hierarchy[section.key].some((existing) => existing.toLowerCase() === item.toLowerCase())
+                  ) && <p className="text-xs text-muted-foreground">All suggestions already added.</p>}
+                </div>
               </div>
             </CardContent>
           </Card>
