@@ -125,34 +125,38 @@ class StudentViewSet(viewsets.ModelViewSet):
         label = (student_class or '').strip().lower()
         normalized = label.replace(' ', '')
         if 'upper sixth' in label or 'upper6' in normalized:
-            return 'upper_sixth'
+            return 'Upper Sixth'
         if 'lower sixth' in label or 'lower6' in normalized:
-            return 'lower_sixth'
+            return 'Lower Sixth'
         if 'form1' in normalized:
-            return 'form1'
+            return 'Form 1'
         if 'form2' in normalized:
-            return 'form2'
+            return 'Form 2'
         if 'form3' in normalized:
-            return 'form3'
+            return 'Form 3'
         if 'form4' in normalized:
-            return 'form4'
+            return 'Form 4'
         if 'form5' in normalized:
-            return 'form5'
-        return 'form1'
+            return 'Form 5'
+        return 'Form 1'
 
     def _infer_section(self, student_class):
         label = (student_class or '').strip().lower()
         if 'bilingual' in label:
-            return 'bilingual'
+            return 'Bilingual'
         if 'technical' in label:
-            return 'technical'
+            return 'Technical'
         if 'science' in label:
-            return 'science'
+            return 'Science'
         if 'arts' in label or 'art' in label:
-            return 'arts'
+            return 'Arts'
         if 'commercial' in label or 'commerce' in label:
-            return 'commercial'
-        return 'general'
+            return 'Commercial'
+        if 'french' in label or 'francophone' in label:
+            return 'French Section'
+        if 'english' in label or 'anglophone' in label:
+            return 'English Section'
+        return 'General'
 
     def _generate_activation_matricule(self):
         from django.contrib.auth import get_user_model
@@ -174,8 +178,8 @@ class StudentViewSet(viewsets.ModelViewSet):
               <td style="padding:10px;border:1px solid #ddd;">{token.student_name or 'Student activation slot'}</td>
               <td style="padding:10px;border:1px solid #ddd;">{token.matricule}</td>
               <td style="padding:10px;border:1px solid #ddd;">{token.student_class}</td>
-              <td style="padding:10px;border:1px solid #ddd;">{token.get_class_level_display()}</td>
-              <td style="padding:10px;border:1px solid #ddd;">{token.get_section_display()}</td>
+              <td style="padding:10px;border:1px solid #ddd;">{token.class_level}</td>
+              <td style="padding:10px;border:1px solid #ddd;">{token.section}</td>
             </tr>
             """
             for index, token in enumerate(generated_tokens, start=1)
@@ -331,8 +335,8 @@ class StudentViewSet(viewsets.ModelViewSet):
     <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Matricule</strong></td><td style="padding:8px;border:1px solid #ddd;">{user.matricule}</td></tr>
     <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Admission Number</strong></td><td style="padding:8px;border:1px solid #ddd;">{student.admission_number}</td></tr>
     <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Class</strong></td><td style="padding:8px;border:1px solid #ddd;">{student.student_class}</td></tr>
-    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Class Level</strong></td><td style="padding:8px;border:1px solid #ddd;">{student.get_class_level_display()}</td></tr>
-    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Section</strong></td><td style="padding:8px;border:1px solid #ddd;">{student.get_section_display()}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Class Level</strong></td><td style="padding:8px;border:1px solid #ddd;">{student.class_level}</td></tr>
+    <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Section</strong></td><td style="padding:8px;border:1px solid #ddd;">{student.section}</td></tr>
     <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Email</strong></td><td style="padding:8px;border:1px solid #ddd;">{user.email}</td></tr>
     <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Guardian Name</strong></td><td style="padding:8px;border:1px solid #ddd;">{student.guardian_name or '-'}</td></tr>
     <tr><td style="padding:8px;border:1px solid #ddd;"><strong>Guardian Phone</strong></td><td style="padding:8px;border:1px solid #ddd;">{student.guardian_phone or '-'}</td></tr>

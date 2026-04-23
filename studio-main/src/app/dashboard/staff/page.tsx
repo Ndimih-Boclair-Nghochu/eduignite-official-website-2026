@@ -39,7 +39,8 @@ import { usersService } from "@/lib/api/services/users.service";
 import { schoolsService } from "@/lib/api/services/schools.service";
 
 const EXECUTIVE_STAFF_CREATION_ROLES = ["SCHOOL_ADMIN", "SUB_ADMIN", "TEACHER", "BURSAR", "LIBRARIAN"];
-const SCHOOL_ADMIN_STAFF_CREATION_ROLES = ["SUB_ADMIN", "TEACHER", "BURSAR", "LIBRARIAN", "PARENT"];
+const SCHOOL_ADMIN_STAFF_CREATION_ROLES = ["SUB_ADMIN", "TEACHER", "BURSAR", "LIBRARIAN"];
+const STAFF_ROLES = ["SCHOOL_ADMIN", "SUB_ADMIN", "TEACHER", "BURSAR", "LIBRARIAN"];
 
 const normalizeResults = (payload: any) => {
   if (Array.isArray(payload)) return payload;
@@ -180,7 +181,7 @@ export default function StaffPage() {
 
   // Fetch staff list
   const { data: staffList = [] } = useUsers({
-    role: "SCHOOL_ADMIN,SUB_ADMIN,TEACHER,BURSAR,LIBRARIAN,PARENT",
+    role: STAFF_ROLES.join(","),
   });
   const { data: schoolOptions = [] } = useSchools();
 
@@ -196,7 +197,7 @@ export default function StaffPage() {
   const createUserMutation = useCreateUser();
 
   const filteredStaff = staffList
-    .filter((staff: any) => ["SCHOOL_ADMIN", "SUB_ADMIN", "TEACHER", "BURSAR", "LIBRARIAN", "PARENT"].includes(staff.role))
+    .filter((staff: any) => STAFF_ROLES.includes(staff.role))
     .filter((s: any) =>
       s.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||

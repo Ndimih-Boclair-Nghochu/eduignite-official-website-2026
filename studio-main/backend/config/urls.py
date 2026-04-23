@@ -34,6 +34,7 @@ api_v1_patterns = [
     path('users/', include('apps.users.urls', namespace='users')),
     path('schools/', include('apps.schools.urls', namespace='schools')),
     path('students/', include('apps.students.urls', namespace='students')),
+    path('assignments/', include('apps.assignments.urls', namespace='assignments')),
     path('grades/', include('apps.grades.urls', namespace='grades')),
     path('attendance/', include('apps.attendance.urls', namespace='attendance')),
     path('fees/', include('apps.fees.urls', namespace='fees')),

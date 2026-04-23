@@ -10,25 +10,6 @@ from io import BytesIO
 
 
 class Student(TimeStampedModel):
-    CLASS_LEVEL_CHOICES = [
-        ('form1', 'Form 1'),
-        ('form2', 'Form 2'),
-        ('form3', 'Form 3'),
-        ('form4', 'Form 4'),
-        ('form5', 'Form 5'),
-        ('lower_sixth', 'Lower Sixth'),
-        ('upper_sixth', 'Upper Sixth'),
-    ]
-
-    SECTION_CHOICES = [
-        ('general', 'General'),
-        ('bilingual', 'Bilingual'),
-        ('technical', 'Technical'),
-        ('science', 'Science'),
-        ('arts', 'Arts'),
-        ('commercial', 'Commercial'),
-    ]
-
     GENDER_CHOICES = [
         ('male', 'Male'),
         ('female', 'Female'),
@@ -39,8 +20,8 @@ class Student(TimeStampedModel):
     user = models.OneToOneField('users.User', on_delete=models.CASCADE, related_name='student_profile')
     school = models.ForeignKey('schools.School', on_delete=models.CASCADE, related_name='students')
     student_class = models.CharField(max_length=100, help_text='e.g., Form 5, Upper Sixth Science')
-    class_level = models.CharField(max_length=20, choices=CLASS_LEVEL_CHOICES, default='form1')
-    section = models.CharField(max_length=50, choices=SECTION_CHOICES, default='general')
+    class_level = models.CharField(max_length=100, default='Form 1')
+    section = models.CharField(max_length=100, default='General')
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=10, choices=GENDER_CHOICES, default='other')
     guardian_name = models.CharField(max_length=255, blank=True, default='')
@@ -117,8 +98,8 @@ class StudentActivationToken(TimeStampedModel):
     matricule = models.CharField(max_length=50, unique=True, db_index=True)
     student_name = models.CharField(max_length=255, blank=True, default='')
     student_class = models.CharField(max_length=100)
-    class_level = models.CharField(max_length=20, choices=Student.CLASS_LEVEL_CHOICES, default='form1')
-    section = models.CharField(max_length=50, choices=Student.SECTION_CHOICES, default='general')
+    class_level = models.CharField(max_length=100, default='Form 1')
+    section = models.CharField(max_length=100, default='General')
     department = models.CharField(max_length=100, blank=True, default='')
     stream = models.CharField(max_length=100, blank=True, default='')
     batch_name = models.CharField(max_length=255, blank=True, default='')

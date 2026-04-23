@@ -63,6 +63,19 @@ export {
   useStudentCard,
 } from './useStudents';
 
+// Assignments hooks
+export {
+  useAssignments,
+  useAssignment,
+  useAssignmentSubmissions,
+  useMyAssignmentSubmissions,
+  useCreateAssignment,
+  useDeleteAssignment,
+  useCreateAssignmentSubmission,
+  useUpdateAssignmentSubmission,
+  useGradeAssignmentSubmission,
+} from './useAssignments';
+
 // Grades hooks
 export {
   useSubjects,
@@ -194,7 +207,6 @@ export {
   useSendMessage,
   useMarkConversationRead,
   useDeleteMessage,
-  useChatWebSocket,
 } from './useChat';
 
 // AI hooks

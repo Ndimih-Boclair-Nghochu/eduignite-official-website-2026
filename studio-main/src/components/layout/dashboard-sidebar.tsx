@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from "next/link";
@@ -40,7 +39,7 @@ import {
   Sparkles,
   Trophy,
   Video,
-  Medal
+  Medal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -73,7 +72,7 @@ export function DashboardSidebar({ onClose }: SidebarProps) {
       roles: EXECUTIVE_ROLES,
     },
     {
-      label: language === 'en' ? 'Log Post' : 'Poster un Log',
+      label: language === "en" ? "Log Post" : "Poster un Log",
       icon: PenTool,
       href: "/dashboard/log-post",
       roles: BLOG_ROLES,
@@ -82,52 +81,52 @@ export function DashboardSidebar({ onClose }: SidebarProps) {
       label: t("founders"),
       icon: Crown,
       href: "/dashboard/founders",
-      roles: EXECUTIVE_ROLES, 
+      roles: EXECUTIVE_ROLES,
     },
     {
       label: t("schools"),
       icon: Globe,
       href: "/dashboard/schools",
-      roles: ["SUPER_ADMIN", "CEO", "CTO", "COO"], 
+      roles: ["SUPER_ADMIN", "CEO", "CTO", "COO"],
     },
     {
       label: t("supportRegistry"),
       icon: Heart,
       href: "/dashboard/support",
-      roles: ["SUPER_ADMIN", "CEO", "CTO", "COO"], 
+      roles: ["SUPER_ADMIN", "CEO", "CTO", "COO"],
     },
     {
-      label: language === 'en' ? 'Testimonials' : 'Témoignages',
+      label: language === "en" ? "Testimonials" : "Temoignages",
       icon: Quote,
       href: "/dashboard/testimonials",
-      roles: ["SUPER_ADMIN", "CEO", "CTO"], 
+      roles: ["SUPER_ADMIN", "CEO", "CTO"],
     },
     {
-      label: language === 'en' ? 'Portfolio & Policy' : 'Portfolio & Politique',
+      label: language === "en" ? "Portfolio & Policy" : "Portfolio & Politique",
       icon: isDesigner ? Star : Settings2,
       href: "/dashboard/platform-settings",
-      roles: ["SUPER_ADMIN", "CEO", "DESIGNER", "CTO", "COO"], 
+      roles: ["SUPER_ADMIN", "CEO", "DESIGNER", "CTO", "COO"],
     },
     {
-      label: language === 'en' ? 'Manage Settings' : 'Gérer les Paramètres',
+      label: language === "en" ? "Manage Settings" : "Gerer les Parametres",
       icon: Settings2,
       href: "/dashboard/settings",
       roles: ["SCHOOL_ADMIN"],
     },
     {
-      label: language === 'en' ? 'Hierarchy & Sections' : 'Hiérarchie & Sections',
+      label: language === "en" ? "Hierarchy & Sections" : "Hierarchie & Sections",
       icon: Network,
       href: "/dashboard/community",
       roles: ["SCHOOL_ADMIN"],
     },
     {
-      label: language === 'en' ? 'Strategic Insights' : 'Statistiques Stratégiques',
+      label: language === "en" ? "Strategic Insights" : "Statistiques Strategiques",
       icon: BarChart3,
       href: "/dashboard/statistics",
       roles: ["SCHOOL_ADMIN"],
     },
     {
-      label: language === 'en' ? 'Academic Reward' : 'Récompense Académique',
+      label: language === "en" ? "Academic Reward" : "Recompense Academique",
       icon: Trophy,
       href: "/dashboard/rewards",
       roles: ["SCHOOL_ADMIN", "SUB_ADMIN"],
@@ -148,7 +147,7 @@ export function DashboardSidebar({ onClose }: SidebarProps) {
       label: t("feedback"),
       icon: MessageSquare,
       href: "/dashboard/feedback",
-      roles: ["SUPER_ADMIN", "CEO", "CTO", "COO", "SCHOOL_ADMIN", "SUB_ADMIN"], 
+      roles: ["SUPER_ADMIN", "CEO", "CTO", "COO", "SCHOOL_ADMIN", "SUB_ADMIN"],
     },
     {
       label: t("overview"),
@@ -163,13 +162,13 @@ export function DashboardSidebar({ onClose }: SidebarProps) {
       roles: ["SCHOOL_ADMIN", "SUB_ADMIN", "TEACHER", "STUDENT", "PARENT", "BURSAR", "LIBRARIAN"],
     },
     {
-      label: language === 'en' ? 'Honour Roll' : 'Tableau d\'Honneur',
+      label: language === "en" ? "Honour Roll" : "Tableau d'Honneur",
       icon: Trophy,
       href: "/dashboard/rewards",
       roles: ["STUDENT"],
     },
     {
-      label: language === 'en' ? 'Recognition' : 'Reconnaissance',
+      label: language === "en" ? "Recognition" : "Reconnaissance",
       icon: Medal,
       href: "/dashboard/rewards",
       roles: STAFF_ROLES,
@@ -181,7 +180,7 @@ export function DashboardSidebar({ onClose }: SidebarProps) {
       roles: ["SCHOOL_ADMIN", "SUB_ADMIN", "TEACHER"],
     },
     {
-      label: language === 'en' ? 'Online Classes' : 'Classes en Ligne',
+      label: language === "en" ? "Online Classes" : "Classes en Ligne",
       icon: Video,
       href: "/dashboard/live-classes",
       roles: ["TEACHER", "STUDENT"],
@@ -193,13 +192,13 @@ export function DashboardSidebar({ onClose }: SidebarProps) {
       roles: ["SCHOOL_ADMIN", "SUB_ADMIN"],
     },
     {
-      label: language === 'en' ? 'Transcripts' : 'Relevés de Notes',
+      label: language === "en" ? "Transcripts" : "Releves de Notes",
       icon: FileBadge,
       href: "/dashboard/transcripts",
       roles: ["SCHOOL_ADMIN", "SUB_ADMIN"],
     },
     {
-      label: isBursar ? (language === 'en' ? "Fee Portal" : "Portail Frais") : (language === 'en' ? "Fees & Finance" : "Frais & Finance"),
+      label: isBursar ? (language === "en" ? "Fee Portal" : "Portail Frais") : (language === "en" ? "Fees & Finance" : "Frais & Finance"),
       icon: Coins,
       href: "/dashboard/fees",
       roles: ["BURSAR", "SCHOOL_ADMIN", "SUB_ADMIN"],
@@ -217,7 +216,7 @@ export function DashboardSidebar({ onClose }: SidebarProps) {
       roles: ["PARENT"],
     },
     {
-      label: isSchoolAdmin ? (language === 'en' ? "Institutional Subjects" : "Matières Institutionnelles") : t("courses"),
+      label: isSchoolAdmin ? (language === "en" ? "Institutional Subjects" : "Matieres Institutionnelles") : t("courses"),
       icon: BookOpen,
       href: "/dashboard/courses",
       roles: ["SCHOOL_ADMIN", "SUB_ADMIN", "STUDENT", "TEACHER"],
@@ -259,7 +258,7 @@ export function DashboardSidebar({ onClose }: SidebarProps) {
       roles: [...EXECUTIVE_ROLES, "SCHOOL_ADMIN", "SUB_ADMIN", "TEACHER", "STUDENT", "PARENT", "BURSAR", "LIBRARIAN"],
     },
     {
-      label: language === 'en' ? 'Feedback' : 'Feedback',
+      label: "Feedback",
       icon: Sparkles,
       href: "/dashboard/ai-feedback",
       roles: ["TEACHER"],
@@ -281,38 +280,38 @@ export function DashboardSidebar({ onClose }: SidebarProps) {
   const filteredRoutes = routes.filter((route) => route.roles.includes(user?.role || ""));
 
   return (
-    <div className="flex flex-col h-full bg-primary text-white w-full border-r border-white/10 overflow-hidden">
-      <div className="p-4 sm:p-6 shrink-0">
+    <div className="flex h-full w-full flex-col overflow-hidden border-r border-white/10 bg-primary text-white">
+      <div className="shrink-0 p-4 sm:p-6">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 overflow-hidden">
             {!isSuperAdmin && schoolLogo ? (
-              <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shrink-0 shadow-lg overflow-hidden">
-                <img src={schoolLogo} alt="School Logo" className="w-full h-full object-contain" />
+              <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-white shadow-lg">
+                <img src={schoolLogo} alt="School Logo" className="h-full w-full object-contain" />
               </div>
-            ) : isSuperAdmin && (
-              <div className="bg-secondary rounded-lg shrink-0 h-10 w-10 overflow-hidden flex items-center justify-center">
+            ) : isSuperAdmin ? (
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-secondary">
                 {platformLogo ? (
-                  <img src={platformLogo} alt={platformSettings.name} className="w-full h-full object-contain" />
+                  <img src={platformLogo} alt={platformSettings.name} className="h-full w-full object-contain" />
                 ) : (
-                  <Building2 className="w-6 h-6 text-primary" />
+                  <Building2 className="h-6 w-6 text-primary" />
                 )}
               </div>
-            )}
-            <span className="min-w-0 text-base sm:text-lg font-bold tracking-tight font-headline truncate uppercase">
-              {isSuperAdmin ? platformSettings.name || "Platform Board" : (user?.school?.shortName || user?.school?.name || "Institution")}
+            ) : null}
+            <span className="min-w-0 truncate font-headline text-base font-bold uppercase tracking-tight sm:text-lg">
+              {isSuperAdmin ? platformSettings.name || "Platform Board" : user?.school?.shortName || user?.school?.name || "Institution"}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            {onClose && (
+            {onClose ? (
               <Button variant="ghost" size="icon" className="text-white md:hidden" onClick={onClose}>
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </Button>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
 
-      <div className="flex-1 px-2 sm:px-3 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
+      <div className="scrollbar-thin scrollbar-thumb-white/10 flex-1 overflow-y-auto px-2 sm:px-3">
         <div className="space-y-1 py-2">
           {filteredRoutes.map((route) => (
             <Link
@@ -320,33 +319,37 @@ export function DashboardSidebar({ onClose }: SidebarProps) {
               href={route.href}
               onClick={() => onClose?.()}
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 hover:bg-white/10 group min-w-0",
+                "group flex min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 transition-all duration-200 hover:bg-white/10",
                 pathname === route.href ? "bg-white/20 text-white" : "text-white/60"
               )}
             >
-              <route.icon className={cn("w-5 h-5", pathname === route.href ? "text-secondary" : "text-white/60 group-hover:text-white")} />
-              <span className="min-w-0 break-words font-medium text-sm leading-snug">{route.label}</span>
+              <route.icon className={cn("h-5 w-5", pathname === route.href ? "text-secondary" : "text-white/60 group-hover:text-white")} />
+              <span className="min-w-0 break-words text-sm font-medium leading-snug">{route.label}</span>
             </Link>
           ))}
         </div>
       </div>
 
-      <div className="p-4 border-t border-white/10 mt-auto bg-primary shrink-0">
-        <Link href="/dashboard/profile" onClick={() => onClose?.()} className="flex items-center gap-3 mb-4 px-2 hover:bg-white/5 py-2 rounded-lg transition-colors group min-w-0">
-          <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden shrink-0 border-2 border-transparent group-hover:border-white/20">
-            <img src={userAvatar} alt={user?.name} className="w-full h-full object-cover" />
+      <div className="mt-auto shrink-0 border-t border-white/10 bg-primary p-4">
+        <Link
+          href="/dashboard/profile"
+          onClick={() => onClose?.()}
+          className="group mb-4 flex min-w-0 items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-white/5"
+        >
+          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full border-2 border-transparent bg-secondary group-hover:border-white/20">
+            <img src={userAvatar} alt={user?.name} className="h-full w-full object-cover" />
           </div>
           <div className="flex flex-col overflow-hidden">
-            <span className="text-sm font-semibold truncate text-white">{user?.name}</span>
-            <span className="text-[10px] text-white/50 uppercase font-bold tracking-widest">{user?.role}</span>
+            <span className="truncate text-sm font-semibold text-white">{user?.name}</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">{user?.role}</span>
           </div>
         </Link>
-        <Button 
-          variant="ghost" 
-          className="w-full justify-start text-white/60 hover:text-white hover:bg-white/10 gap-3"
+        <Button
+          variant="ghost"
+          className="w-full justify-start gap-3 text-white/60 hover:bg-white/10 hover:text-white"
           onClick={logout}
         >
-          <LogOut className="w-4 h-4" />
+          <LogOut className="h-4 w-4" />
           <span>{t("logout")}</span>
         </Button>
       </div>

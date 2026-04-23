@@ -72,6 +72,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useSchoolSettings } from "@/lib/hooks/useSchools";
 
 // --- CONSTANTS & MOCK DATA ---
 const ACADEMIC_YEARS = ["2023 / 2024", "2022 / 2023"];
@@ -90,6 +91,7 @@ export default function StatisticsPage() {
   const { user, platformSettings } = useAuth();
   const { t, language } = useI18n();
   const { toast } = useToast();
+  const { data: schoolSettings } = useSchoolSettings(user?.school?.id || "");
   
   // Filters
   const [filters, setFilters] = useState({
@@ -101,6 +103,11 @@ export default function StatisticsPage() {
 
   const [previewReport, setPreviewReport] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  const availableSections = useMemo(
+    () => (schoolSettings?.sections?.filter(Boolean)?.length ? schoolSettings.sections : SECTIONS),
+    [schoolSettings]
+  );
 
   // Strategic Metrics
   const stats = useMemo(() => ({
@@ -171,7 +178,7 @@ export default function StatisticsPage() {
               <SelectTrigger className="w-[150px] border-none h-9 text-xs font-bold focus:ring-0 uppercase"><SelectValue placeholder="All Sections" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Entire Node</SelectItem>
-                {SECTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                {availableSections.map((section) => <SelectItem key={section} value={section}>{section}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

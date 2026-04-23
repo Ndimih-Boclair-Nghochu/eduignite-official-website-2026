@@ -30,25 +30,6 @@ import { FileText, Loader2, Plus, Search, Sparkles, Upload, UserPlus, Users } fr
 import type { BulkStudentUploadRequest, CreateStudentRequest, Student, UpdateStudentRequest } from "@/lib/api/types";
 import { studentsService } from "@/lib/api/services/students.service";
 
-const CLASS_LEVEL_OPTIONS = [
-  { value: "form1", label: "Form 1" },
-  { value: "form2", label: "Form 2" },
-  { value: "form3", label: "Form 3" },
-  { value: "form4", label: "Form 4" },
-  { value: "form5", label: "Form 5" },
-  { value: "lower_sixth", label: "Lower Sixth" },
-  { value: "upper_sixth", label: "Upper Sixth" },
-];
-
-const SECTION_OPTIONS = [
-  { value: "general", label: "General" },
-  { value: "bilingual", label: "Bilingual" },
-  { value: "technical", label: "Technical" },
-  { value: "science", label: "Science" },
-  { value: "arts", label: "Arts" },
-  { value: "commercial", label: "Commercial" },
-];
-
 const GENDER_OPTIONS = [
   { value: "male", label: "Male" },
   { value: "female", label: "Female" },
@@ -69,8 +50,8 @@ const emptyForm: CreateStudentRequest = {
   whatsapp: "",
   password: "",
   student_class: "",
-  class_level: "form1",
-  section: "general",
+  class_level: "Form 1",
+  section: "General",
   date_of_birth: "",
   gender: "male",
   guardian_name: "",
@@ -133,6 +114,12 @@ function studentInitials(student: Student) {
     .toUpperCase();
 }
 
+function formatHierarchyValue(value?: string) {
+  return (value || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
 export default function StudentsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -182,8 +169,8 @@ export default function StudentsPage() {
         phone: editingStudent.user?.phone ?? "",
         whatsapp: editingStudent.user?.whatsapp ?? "",
         student_class: editingStudent.student_class ?? "",
-        class_level: editingStudent.class_level ?? "form1",
-        section: editingStudent.section ?? "general",
+        class_level: editingStudent.class_level ?? "Form 1",
+        section: editingStudent.section ?? "General",
         date_of_birth: editingStudent.date_of_birth ?? "",
         gender: (editingStudent.gender?.toLowerCase?.() as "male" | "female" | "other") ?? "male",
         guardian_name: editingStudent.guardian_name ?? "",
@@ -470,7 +457,7 @@ export default function StudentsPage() {
                           {student.student_class}
                         </Badge>
                         <Badge className="bg-secondary/15 text-[10px] font-bold uppercase text-primary">
-                          {student.class_level.replace("_", " ")}
+                          {formatHierarchyValue(student.class_level)}
                         </Badge>
                         {((student as any).parent_count ?? 0) > 0 ? (
                           <Badge className="bg-green-100 text-[10px] font-bold uppercase text-green-700">
@@ -580,20 +567,8 @@ export default function StudentsPage() {
                 <div className="space-y-2"><Label>Admission Number (optional)</Label><Input value={formData.admission_number || ""} onChange={(event) => handleChange("admission_number", event.target.value)} placeholder="Leave blank to auto-generate" /></div>
                 <div className="space-y-2"><Label>Admission Date (optional)</Label><Input type="date" value={formData.admission_date || ""} onChange={(event) => handleChange("admission_date", event.target.value)} /></div>
                 <div className="space-y-2"><Label>Class Name</Label><Input placeholder="Form 5 Science" value={formData.student_class} onChange={(event) => handleChange("student_class", event.target.value)} /></div>
-                <div className="space-y-2">
-                  <Label>Class Level</Label>
-                  <Select value={formData.class_level} onValueChange={(value) => handleChange("class_level", value)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>{CLASS_LEVEL_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Section</Label>
-                  <Select value={formData.section} onValueChange={(value) => handleChange("section", value)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>{SECTION_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
+                <div className="space-y-2"><Label>Class Level</Label><Input placeholder="Form 1, 6eme, Lower Sixth..." value={formData.class_level || ""} onChange={(event) => handleChange("class_level", event.target.value)} /></div>
+                <div className="space-y-2"><Label>Section</Label><Input placeholder="English Section, Technical, Bilingual..." value={formData.section || ""} onChange={(event) => handleChange("section", event.target.value)} /></div>
                 <div className="space-y-2"><Label>Initial Password</Label><Input type="password" placeholder="Optional. Leave empty for activation later." value={formData.password || ""} onChange={(event) => handleChange("password", event.target.value)} /></div>
               </div>
             </section>
@@ -667,20 +642,8 @@ export default function StudentsPage() {
                   placeholder="30"
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Class Level (optional)</Label>
-                <Select value={bulkData.class_level} onValueChange={(value) => setBulkData((current) => ({ ...current, class_level: value }))}>
-                  <SelectTrigger><SelectValue placeholder="Auto-detect from class name" /></SelectTrigger>
-                  <SelectContent>{CLASS_LEVEL_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Section (optional)</Label>
-                <Select value={bulkData.section} onValueChange={(value) => setBulkData((current) => ({ ...current, section: value }))}>
-                  <SelectTrigger><SelectValue placeholder="Auto-detect or default to General" /></SelectTrigger>
-                  <SelectContent>{SECTION_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
+              <div className="space-y-2"><Label>Class Level (optional)</Label><Input value={bulkData.class_level || ""} onChange={(event) => setBulkData((current) => ({ ...current, class_level: event.target.value }))} placeholder="Leave blank to infer or type your own level" /></div>
+              <div className="space-y-2"><Label>Section (optional)</Label><Input value={bulkData.section || ""} onChange={(event) => setBulkData((current) => ({ ...current, section: event.target.value }))} placeholder="Leave blank to infer or type your own section" /></div>
               <div className="space-y-2">
                 <Label>Department (optional)</Label>
                 <Input value={bulkData.department || ""} onChange={(event) => setBulkData((current) => ({ ...current, department: event.target.value }))} placeholder="Science Department" />
@@ -715,7 +678,7 @@ export default function StudentsPage() {
                     <div key={student.id} className="flex items-center justify-between rounded-xl border p-3">
                       <div>
                         <p className="font-bold text-primary">{student.student_class}</p>
-                        <p className="text-xs text-muted-foreground">{student.matricule} · {student.class_level?.replace?.("_", " ") || student.class_level}</p>
+                        <p className="text-xs text-muted-foreground">{student.matricule} · {formatHierarchyValue(student.class_level)}</p>
                       </div>
                       <Badge variant="outline" className="border-primary/10 font-bold text-primary uppercase">
                         {student.section}
@@ -777,20 +740,8 @@ export default function StudentsPage() {
             <div className="space-y-2"><Label>Phone</Label><Input value={(editData.phone as string) || ""} onChange={(event) => setEditData((current) => ({ ...current, phone: event.target.value }))} /></div>
             <div className="space-y-2"><Label>WhatsApp</Label><Input value={(editData.whatsapp as string) || ""} onChange={(event) => setEditData((current) => ({ ...current, whatsapp: event.target.value }))} /></div>
             <div className="space-y-2"><Label>Class Name</Label><Input value={(editData.student_class as string) || ""} onChange={(event) => setEditData((current) => ({ ...current, student_class: event.target.value }))} /></div>
-            <div className="space-y-2">
-              <Label>Class Level</Label>
-              <Select value={(editData.class_level as string) || "form1"} onValueChange={(value) => setEditData((current) => ({ ...current, class_level: value }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{CLASS_LEVEL_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Section</Label>
-              <Select value={(editData.section as string) || "general"} onValueChange={(value) => setEditData((current) => ({ ...current, section: value }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{SECTION_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
+            <div className="space-y-2"><Label>Class Level</Label><Input value={(editData.class_level as string) || "Form 1"} onChange={(event) => setEditData((current) => ({ ...current, class_level: event.target.value }))} /></div>
+            <div className="space-y-2"><Label>Section</Label><Input value={(editData.section as string) || "General"} onChange={(event) => setEditData((current) => ({ ...current, section: event.target.value }))} /></div>
             <div className="space-y-2"><Label>Date of Birth</Label><Input type="date" value={(editData.date_of_birth as string) || ""} onChange={(event) => setEditData((current) => ({ ...current, date_of_birth: event.target.value }))} /></div>
             <div className="space-y-2">
               <Label>Gender</Label>

@@ -122,6 +122,8 @@ export function useCreatePayment() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: feesKeys.paymentsList() });
       queryClient.invalidateQueries({ queryKey: feesKeys.my() });
+      queryClient.invalidateQueries({ queryKey: feesKeys.revenue() });
+      queryClient.invalidateQueries({ queryKey: feesKeys.outstanding() });
     },
   });
 }

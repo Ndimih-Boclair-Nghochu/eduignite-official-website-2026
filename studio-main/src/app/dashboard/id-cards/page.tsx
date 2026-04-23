@@ -79,9 +79,19 @@ export default function IdCardsPage() {
     return MOCK_STUDENTS;
   }, [studentsApiData]);
 
+  const availableClasses = useMemo(
+    () => Array.from(new Set(studentList.map((student: any) => student.class).filter(Boolean))).sort(),
+    [studentList]
+  );
+
+  const availableSections = useMemo(
+    () => Array.from(new Set(studentList.map((student: any) => student.section).filter(Boolean))).sort(),
+    [studentList]
+  );
+
   const filtered = studentList.filter((s: any) => {
     const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) || s.id.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesClass = classFilter === "all" || s.class.includes(classFilter.split(' / ')[0]);
+    const matchesClass = classFilter === "all" || s.class === classFilter;
     const matchesSection = sectionFilter === "all" || s.section === sectionFilter;
     return matchesSearch && matchesClass && matchesSection;
   });
@@ -159,7 +169,7 @@ export default function IdCardsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Entire Node</SelectItem>
-                  {SECTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  {availableSections.map((section) => <SelectItem key={section} value={section}>{section}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Select value={classFilter} onValueChange={setClassFilter}>
@@ -171,7 +181,7 @@ export default function IdCardsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Classes</SelectItem>
-                  {CLASSES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  {availableClasses.map((className) => <SelectItem key={className} value={className}>{className}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

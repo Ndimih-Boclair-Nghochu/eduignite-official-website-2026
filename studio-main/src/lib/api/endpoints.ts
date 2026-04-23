@@ -69,6 +69,14 @@ export const API = {
     STUDENT_CARD: (id: string) => `/students/students/${id}/student_card/`,
     ADMISSION_FORM: (id: string) => `/students/students/${id}/admission_form/`,
   },
+  ASSIGNMENTS: {
+    BASE: '/assignments/assignments/',
+    DETAIL: (id: string) => `/assignments/assignments/${id}/`,
+    SUBMISSIONS: '/assignments/submissions/',
+    SUBMISSION_DETAIL: (id: string) => `/assignments/submissions/${id}/`,
+    MY_SUBMISSIONS: '/assignments/submissions/my_submissions/',
+    GRADE_SUBMISSION: (id: string) => `/assignments/submissions/${id}/grade/`,
+  },
   GRADES: {
     SUBJECTS: '/grades/subjects/',
     SUBJECT_DETAIL: (id: string) => `/grades/subjects/${id}/`,

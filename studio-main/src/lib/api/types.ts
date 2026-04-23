@@ -311,6 +311,73 @@ export interface Subject {
   level: string;
   coefficient: number;
   teacher?: string;
+  teacher_name?: string;
+}
+
+export interface Assignment {
+  id: string;
+  school: string;
+  subject: string;
+  subject_name?: string;
+  subject_code?: string;
+  teacher?: string;
+  teacher_name?: string;
+  title: string;
+  instructions?: string;
+  target_class: string;
+  due_date: string;
+  max_marks: number | string;
+  submission_type: 'text' | 'file' | 'both';
+  status: 'draft' | 'published' | 'cancelled';
+  created?: string;
+  modified?: string;
+}
+
+export interface AssignmentSubmission {
+  id: string;
+  assignment: string;
+  assignment_title?: string;
+  assignment_max_marks?: number | string;
+  subject_name?: string;
+  target_class?: string;
+  student?: string;
+  student_name?: string;
+  student_admission?: string;
+  content?: string;
+  attachment_name?: string;
+  attachment_data?: string;
+  status: 'submitted' | 'graded';
+  score?: number | string | null;
+  feedback?: string;
+  graded_by?: string | null;
+  graded_by_name?: string;
+  graded_at?: string | null;
+  created?: string;
+  modified?: string;
+}
+
+export interface CreateAssignmentRequest {
+  subject: string;
+  teacher?: string;
+  title: string;
+  instructions?: string;
+  target_class: string;
+  due_date: string;
+  max_marks: number;
+  submission_type: 'text' | 'file' | 'both';
+  status: 'draft' | 'published' | 'cancelled';
+}
+
+export interface CreateAssignmentSubmissionRequest {
+  assignment: string;
+  content?: string;
+  attachment_name?: string;
+  attachment_data?: string;
+}
+
+export interface GradeAssignmentSubmissionRequest {
+  score: number;
+  feedback?: string;
 }
 
 export interface Sequence {
@@ -428,8 +495,12 @@ export interface Payment {
   id: string;
   school: string;
   payer?: User;
+  payer_name?: string;
   fee_structure?: FeeStructure;
+  fee_structure_detail?: FeeStructure;
+  fee_name?: string;
   bursar?: User;
+  bursar_name?: string;
   amount: string;
   currency: string;
   payment_method: "Cash" | "Mobile Money" | "Bank Transfer" | "Cheque" | string;
@@ -439,6 +510,8 @@ export interface Payment {
   confirmed_at?: string;
   notes?: string;
   receipt_number?: string;
+  created?: string;
+  modified?: string;
 }
 
 export interface Invoice {
@@ -453,7 +526,17 @@ export interface Invoice {
 }
 
 export interface RevenueReport {
-  [key: string]: unknown;
+  total_collected?: number | string;
+  total_pending?: number | string;
+  total_rejected?: number | string;
+  period?: string;
+  by_method?: Record<string, number | string>;
+  by_fee_type?: Record<string, number | string>;
+  payment_count?: number;
+  monthly_trend?: Array<{
+    month: string;
+    amount: number | string;
+  }>;
 }
 
 export type Receipt = Blob;
@@ -461,13 +544,15 @@ export type Receipt = Blob;
 export type CreateFeeStructureRequest = Partial<FeeStructure>;
 
 export interface CreatePaymentRequest {
-  payer_id: string;
-  fee_structure_id?: string;
+  payer?: string;
+  fee_structure?: string;
   amount: string;
-  currency: string;
+  currency?: string;
   payment_method: "Cash" | "Mobile Money" | "Bank Transfer" | "Cheque";
-  reference_number: string;
+  payment_date?: string;
   notes?: string;
+  license_beneficiary?: string;
+  mark_license_paid?: boolean;
 }
 
 export interface ConfirmPaymentRequest {

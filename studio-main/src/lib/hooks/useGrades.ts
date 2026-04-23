@@ -51,6 +51,40 @@ export function useSubjects(params?: PaginationParams) {
   });
 }
 
+export function useCreateSubject() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: Partial<Subject>) => gradesService.createSubject(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: gradesKeys.subjects() });
+    },
+  });
+}
+
+export function useUpdateSubject() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Subject> }) =>
+      gradesService.updateSubject(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: gradesKeys.subjects() });
+    },
+  });
+}
+
+export function useDeleteSubject() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => gradesService.deleteSubject(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: gradesKeys.subjects() });
+    },
+  });
+}
+
 /**
  * Hook for fetching sequences with optional pagination
  */

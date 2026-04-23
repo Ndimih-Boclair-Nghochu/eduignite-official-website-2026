@@ -48,6 +48,7 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSubjects } from "@/lib/hooks/useGrades";
+import { useSchoolSettings } from "@/lib/hooks/useSchools";
 import {
   useLiveClasses,
   useMyLiveClasses,
@@ -92,6 +93,16 @@ function statusLabel(status: string) {
   if (status === 'upcoming') return 'UPCOMING';
   if (status === 'ended') return 'ENDED';
   return 'CANCELLED';
+}
+
+function parseSubjectPlacement(level?: string) {
+  const raw = (level || "").trim();
+  if (!raw) return [];
+  if (!raw.includes("||")) {
+    return raw.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+  const [, classes] = raw.split("||");
+  return (classes || "").split(",").map((item) => item.trim()).filter(Boolean);
 }
 
 // ─── Session Card ─────────────────────────────────────────────────────────────
@@ -261,11 +272,12 @@ function StatsStrip({ stats }: { stats?: { total: number; live_now: number; upco
 
 // ─── Schedule Form ────────────────────────────────────────────────────────────
 function ScheduleDialog({
-  open, onClose, subjects, onSubmit, isPending
+  open, onClose, subjects, classes, onSubmit, isPending
 }: {
   open: boolean;
   onClose: () => void;
-  subjects: string[];
+  subjects: Array<{ name: string; classes: string[] }>;
+  classes: string[];
   onSubmit: (data: CreateLiveClassRequest) => void;
   isPending: boolean;
 }) {
@@ -281,10 +293,10 @@ function ScheduleDialog({
     description: "",
   });
 
-  const CLASSES = [
-    "Form 1","Form 2","Form 3","Form 4","Form 5","Lower Sixth","Upper Sixth",
-    "6ème","5ème","4ème","3ème","2nde","1ère","Terminale",
-  ];
+  const targetClassOptions = useMemo(() => {
+    const selectedSubject = subjects.find((subject) => subject.name === form.subject_name);
+    return selectedSubject?.classes?.length ? selectedSubject.classes : classes;
+  }, [classes, form.subject_name, subjects]);
 
   const handleSubmit = () => {
     if (!form.title || !form.start_time || !form.target_class) return;
@@ -315,7 +327,7 @@ function ScheduleDialog({
                   <SelectValue placeholder="Select subject" />
                 </SelectTrigger>
                 <SelectContent>
-                  {subjects.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  {subjects.map((subject) => <SelectItem key={subject.name} value={subject.name}>{subject.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -326,7 +338,7 @@ function ScheduleDialog({
                   <SelectValue placeholder="Select class" />
                 </SelectTrigger>
                 <SelectContent>
-                  {CLASSES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  {targetClassOptions.map((className) => <SelectItem key={className} value={className}>{className}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -407,6 +419,7 @@ export default function OnlineClassesPage() {
   const isAdmin = user?.role === "SCHOOL_ADMIN" || user?.role === "SUB_ADMIN";
   const isStudent = user?.role === "STUDENT";
   const canManage = isTeacher || isAdmin;
+  const { data: schoolSettings } = useSchoolSettings(user?.school?.id || "");
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -432,9 +445,22 @@ export default function OnlineClassesPage() {
   const enrollMutation = useEnrollInClass();
   const unenrollMutation = useUnenrollFromClass();
 
-  const subjectNames = subjectsData?.results?.map((s: any) => s.name) || [
-    "Advanced Physics", "Mathematics", "English Literature", "Chemistry", "History & Geography"
-  ];
+  const subjectOptions = useMemo(() => {
+    const list = subjectsData?.results || [];
+    const scoped = isTeacher
+      ? list.filter((subject: any) => subject.teacher === user?.id || subject.teacher === user?.uid)
+      : list;
+    return scoped.map((subject: any) => ({
+      name: subject.name,
+      classes: parseSubjectPlacement(subject.level),
+    }));
+  }, [isTeacher, subjectsData?.results, user?.id, user?.uid]);
+
+  const availableClasses = useMemo(() => {
+    const subjectClasses = subjectOptions.flatMap((subject) => subject.classes);
+    const schoolClasses = schoolSettings?.class_levels || [];
+    return Array.from(new Set([...subjectClasses, ...schoolClasses].filter(Boolean)));
+  }, [schoolSettings?.class_levels, subjectOptions]);
 
   const allClasses = allData?.results || [];
   const liveNow = liveNowData?.results || [];
@@ -696,7 +722,8 @@ export default function OnlineClassesPage() {
       <ScheduleDialog
         open={showSchedule}
         onClose={() => setShowSchedule(false)}
-        subjects={subjectNames}
+        subjects={subjectOptions}
+        classes={availableClasses}
         onSubmit={handleCreate}
         isPending={createMutation.isPending}
       />

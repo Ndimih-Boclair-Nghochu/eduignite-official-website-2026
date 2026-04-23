@@ -517,20 +517,16 @@ export default function LibraryPage() {
                       <CardContent className="pt-4">
                         <div className="flex items-center justify-between gap-4">
                           <div className="flex-1">
-                            <p className="font-bold">{loan.bookTitle}</p>
-                            <p className="text-xs text-muted-foreground mt-1">Return by: {loan.returnDate}</p>
+                            <p className="font-bold">{loan.book_title || loan.book?.title || "Library Book"}</p>
+                            <p className="text-xs text-muted-foreground mt-1">Return by: {loan.due_date || loan.returnDate}</p>
                           </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleReturnBook(loan)}
-                            disabled={isProcessing}
-                            className="gap-1"
-                          >
-                            {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
-                            Return
-                          </Button>
+                          <Badge variant="outline" className="text-[10px] font-black">
+                            {loan.status || "Active"}
+                          </Badge>
                         </div>
+                        <p className="mt-3 text-[11px] text-muted-foreground">
+                          Please return this book to the librarian so the official return can be recorded.
+                        </p>
                       </CardContent>
                     </Card>
                   ))}

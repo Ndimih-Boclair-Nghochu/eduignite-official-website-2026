@@ -16,6 +16,9 @@ from .utils import (
     compute_rank, generate_report_card_data
 )
 
+SCHOOL_ADMIN_ROLES = ['SCHOOL_ADMIN', 'SUB_ADMIN']
+SCHOOL_STAFF_ROLES = ['SCHOOL_ADMIN', 'SUB_ADMIN', 'TEACHER', 'BURSAR', 'LIBRARIAN']
+
 
 class SubjectViewSet(viewsets.ModelViewSet):
     queryset = Subject.objects.select_related('teacher')
@@ -26,7 +29,7 @@ class SubjectViewSet(viewsets.ModelViewSet):
         user = self.request.user
         queryset = Subject.objects.select_related('teacher')
 
-        if user.role in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
+        if user.role in SCHOOL_ADMIN_ROLES:
             queryset = queryset.filter(school=user.school)
         elif user.role == 'TEACHER':
             queryset = queryset.filter(school=user.school)
@@ -36,14 +39,16 @@ class SubjectViewSet(viewsets.ModelViewSet):
         return queryset
 
     def create(self, request, *args, **kwargs):
-        if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
+        if request.user.role not in SCHOOL_ADMIN_ROLES:
             raise PermissionDenied("Only school administrators can create subjects.")
 
-        request.data['school'] = request.user.school.id
+        data = request.data.copy()
+        data['school'] = request.user.school.id
+        request._full_data = data
         return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
-        if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
+        if request.user.role not in SCHOOL_ADMIN_ROLES:
             raise PermissionDenied("Only school administrators can update subjects.")
         return super().update(request, *args, **kwargs)
 
@@ -57,22 +62,30 @@ class SequenceViewSet(viewsets.ModelViewSet):
         user = self.request.user
         queryset = Sequence.objects.all()
 
-        if user.role in ['SCHOOL_ADMIN', 'SUB_ADMIN', 'TEACHER']:
+        if user.role in SCHOOL_STAFF_ROLES and user.school_id:
             queryset = queryset.filter(school=user.school)
+        elif user.role == 'STUDENT' and user.school_id:
+            queryset = queryset.filter(school=user.school)
+        elif user.role == 'PARENT':
+            from apps.students.models import ParentStudentLink
+            school_ids = ParentStudentLink.objects.filter(parent=user).values_list('student__school_id', flat=True)
+            queryset = queryset.filter(school_id__in=school_ids)
         else:
             queryset = queryset.none()
 
         return queryset
 
     def create(self, request, *args, **kwargs):
-        if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
+        if request.user.role not in SCHOOL_ADMIN_ROLES:
             raise PermissionDenied("Only school administrators can create sequences.")
 
-        request.data['school'] = request.user.school.id
+        data = request.data.copy()
+        data['school'] = request.user.school.id
+        request._full_data = data
         return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
-        if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
+        if request.user.role not in SCHOOL_ADMIN_ROLES:
             raise PermissionDenied("Only school administrators can update sequences.")
         return super().update(request, *args, **kwargs)
 
@@ -88,7 +101,7 @@ class GradeViewSet(viewsets.ModelViewSet):
 
         if user.role == 'TEACHER':
             queryset = queryset.filter(teacher=user)
-        elif user.role in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
+        elif user.role in SCHOOL_ADMIN_ROLES:
             queryset = queryset.filter(school=user.school)
         elif user.role == 'STUDENT':
             queryset = queryset.filter(student__user=user)
@@ -110,7 +123,7 @@ class GradeViewSet(viewsets.ModelViewSet):
         return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
-        if request.user.role not in ['TEACHER', 'SCHOOL_ADMIN', 'SUB_ADMIN']:
+        if request.user.role not in ['TEACHER', *SCHOOL_ADMIN_ROLES]:
             raise PermissionDenied("Only teachers and administrators can update grades.")
         return super().update(request, *args, **kwargs)
 
@@ -159,7 +172,13 @@ class GradeViewSet(viewsets.ModelViewSet):
             from apps.students.models import ParentStudentLink
             if not ParentStudentLink.objects.filter(parent=request.user, student=student).exists():
                 raise PermissionDenied("You can only view report cards for your linked children.")
-        elif request.user.role not in ['TEACHER', 'SCHOOL_ADMIN', 'SUB_ADMIN']:
+        elif request.user.role == 'TEACHER':
+            if student.school_id != request.user.school_id or sequence.school_id != request.user.school_id:
+                raise PermissionDenied("You can only view report cards in your school.")
+        elif request.user.role in SCHOOL_ADMIN_ROLES:
+            if student.school_id != request.user.school_id or sequence.school_id != request.user.school_id:
+                raise PermissionDenied("You can only view report cards in your school.")
+        else:
             raise PermissionDenied("Insufficient permissions to view report card.")
 
         data = generate_report_card_data(student, sequence)
@@ -177,7 +196,7 @@ class GradeViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN', 'TEACHER']:
+        if request.user.role not in [*SCHOOL_ADMIN_ROLES, 'TEACHER']:
             raise PermissionDenied("Only school staff can view class results.")
 
         try:
@@ -187,6 +206,8 @@ class GradeViewSet(viewsets.ModelViewSet):
                 {'error': 'Sequence not found.'},
                 status=status.HTTP_404_NOT_FOUND
             )
+        if sequence.school_id != request.user.school_id:
+            raise PermissionDenied("You can only view class results in your school.")
 
         from apps.students.models import Student
         students = Student.objects.filter(
@@ -218,7 +239,7 @@ class GradeViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN', 'TEACHER']:
+        if request.user.role not in [*SCHOOL_ADMIN_ROLES, 'TEACHER']:
             raise PermissionDenied("Only school staff can view subject analytics.")
 
         try:
@@ -228,6 +249,8 @@ class GradeViewSet(viewsets.ModelViewSet):
                 {'error': 'Sequence not found.'},
                 status=status.HTTP_404_NOT_FOUND
             )
+        if sequence.school_id != request.user.school_id:
+            raise PermissionDenied("You can only view subject analytics in your school.")
 
         from apps.grades.models import Subject
         subjects = Subject.objects.filter(school=request.user.school).prefetch_related('grades')
@@ -256,7 +279,7 @@ class TermResultViewSet(viewsets.ModelViewSet):
         user = self.request.user
         queryset = TermResult.objects.select_related('student', 'school')
 
-        if user.role in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
+        if user.role in SCHOOL_ADMIN_ROLES:
             queryset = queryset.filter(school=user.school)
         elif user.role == 'TEACHER':
             queryset = queryset.filter(school=user.school)
@@ -272,7 +295,7 @@ class TermResultViewSet(viewsets.ModelViewSet):
         return queryset
 
     def create(self, request, *args, **kwargs):
-        if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
+        if request.user.role not in SCHOOL_ADMIN_ROLES:
             raise PermissionDenied("Only school administrators can create term results.")
         return super().create(request, *args, **kwargs)
 
@@ -286,7 +309,7 @@ class AnnualResultViewSet(viewsets.ModelViewSet):
         user = self.request.user
         queryset = AnnualResult.objects.select_related('student', 'school')
 
-        if user.role in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
+        if user.role in SCHOOL_ADMIN_ROLES:
             queryset = queryset.filter(school=user.school)
         elif user.role == 'TEACHER':
             queryset = queryset.filter(school=user.school)
@@ -302,6 +325,6 @@ class AnnualResultViewSet(viewsets.ModelViewSet):
         return queryset
 
     def create(self, request, *args, **kwargs):
-        if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN']:
+        if request.user.role not in SCHOOL_ADMIN_ROLES:
             raise PermissionDenied("Only school administrators can create annual results.")
         return super().create(request, *args, **kwargs)

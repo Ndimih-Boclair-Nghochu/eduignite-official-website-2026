@@ -6,226 +6,254 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
-import { Building2, GraduationCap, Users, Coins, ShieldCheck, TrendingUp, FileDown, CheckCircle2, Clock, Loader2 } from "lucide-react";
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
+import { Building2, GraduationCap, Users, Coins, ShieldCheck, TrendingUp, FileDown } from "lucide-react";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
 import { cn } from "@/lib/utils";
 import { useStudents } from "@/lib/hooks/useStudents";
 import { useUsers } from "@/lib/hooks/useUsers";
-import { usePayments } from "@/lib/hooks/useFees";
-import { useFeeStructures } from "@/lib/hooks/useFees";
-import { DATA_PERIODS } from "./dashboard-mock-data";
+import { useAttendanceRecords } from "@/lib/hooks/useAttendance";
+import { useFeeStructures, usePayments, useRevenueReport } from "@/lib/hooks/useFees";
 import { resolveMediaUrl } from "@/lib/media";
+
+function formatMoney(value: number | string | undefined) {
+  return `XAF ${Number(value || 0).toLocaleString()}`;
+}
 
 export function AdminDashboard() {
   const { user } = useAuth();
   const { data: studentsResp, isLoading: studentsLoading } = useStudents();
-  const { data: staffResp, isLoading: staffLoading } = useUsers({ role: 'SCHOOL_ADMIN,SUB_ADMIN,TEACHER,BURSAR,LIBRARIAN' });
-  const { data: paymentsResp } = usePayments();
-  const { data: feesResp } = useFeeStructures();
+  const { data: staffResp, isLoading: staffLoading } = useUsers({ role: "SCHOOL_ADMIN,SUB_ADMIN,TEACHER,BURSAR,LIBRARIAN" });
+  const { data: attendanceResp, isLoading: attendanceLoading } = useAttendanceRecords({ limit: 500 });
+  const { data: paymentsResp } = usePayments({ limit: 200 });
+  const { data: feesResp } = useFeeStructures({ limit: 200 });
+  const { data: revenueReport } = useRevenueReport();
 
   const totalStudents = studentsResp?.count ?? 0;
   const totalStaff = staffResp?.count ?? 0;
-
-  const confirmedPayments = paymentsResp?.results?.filter(p => p.status === 'Confirmed') ?? [];
-  const totalRevenue = confirmedPayments.reduce((sum, p) => sum + parseFloat(p.amount ?? '0'), 0);
-
-  const totalFeeStructures = feesResp?.count ?? 0;
   const studentRows = studentsResp?.results ?? [];
-  const liveClassSummary = Object.values(
-    studentRows.reduce((acc: Record<string, { class: string; students: number; averageTotal: number; averageCount: number }>, student) => {
+  const attendanceRows = attendanceResp?.results ?? [];
+  const confirmedPayments = paymentsResp?.results?.filter((payment) => payment.status === "Confirmed") ?? [];
+
+  const attendanceByClass = attendanceRows.reduce((acc: Record<string, { present: number; total: number }>, record) => {
+    const className = record.student?.student_class || "Unassigned";
+    if (!acc[className]) {
+      acc[className] = { present: 0, total: 0 };
+    }
+    acc[className].total += 1;
+    if (["Present", "Late", "present", "late"].includes(record.status)) {
+      acc[className].present += 1;
+    }
+    return acc;
+  }, {});
+
+  const classSummary = Object.values(
+    studentRows.reduce((acc: Record<string, { className: string; students: number; averageTotal: number; averageCount: number }>, student) => {
       const className = student.student_class || "Unassigned";
       if (!acc[className]) {
-        acc[className] = { class: className, students: 0, averageTotal: 0, averageCount: 0 };
+        acc[className] = { className, students: 0, averageTotal: 0, averageCount: 0 };
       }
       acc[className].students += 1;
-      const annualAverage = Number(student.annual_average ?? 0);
-      if (!Number.isNaN(annualAverage) && annualAverage > 0) {
-        acc[className].averageTotal += annualAverage;
+      const average = Number(student.annual_average ?? 0);
+      if (!Number.isNaN(average) && average > 0) {
+        acc[className].averageTotal += average;
         acc[className].averageCount += 1;
       }
       return acc;
     }, {})
   )
-    .map((item) => ({
-      class: item.class,
-      students: item.students,
-      average: item.averageCount ? Number((item.averageTotal / item.averageCount).toFixed(2)) : 0,
-      revenue: totalStudents ? Math.round((item.students / totalStudents) * 100) : 0,
+    .map((row) => ({
+      className: row.className,
+      students: row.students,
+      average: row.averageCount ? Number((row.averageTotal / row.averageCount).toFixed(2)) : 0,
+      attendance: attendanceByClass[row.className]?.total
+        ? Math.round((attendanceByClass[row.className].present / attendanceByClass[row.className].total) * 100)
+        : 0,
+      enrollmentShare: totalStudents ? Math.round((row.students / totalStudents) * 100) : 0,
     }))
     .sort((a, b) => b.students - a.students);
 
+  const performanceSeries = classSummary.slice(0, 8).map((row) => ({
+    name: row.className,
+    performance: row.average,
+  }));
+
   const governanceLogs = [
-    ...(studentRows.slice(0, 3).map((student) => ({
+    ...studentRows.slice(0, 3).map((student) => ({
       action: "Student admitted",
       actor: student.user?.name || student.admission_number,
       time: student.admission_date || "Recent",
       status: "Success",
-    }))),
-    ...(confirmedPayments.slice(0, 2).map((payment) => ({
+    })),
+    ...confirmedPayments.slice(0, 2).map((payment) => ({
       action: "Payment confirmed",
-      actor: payment.payer?.name || payment.reference_number,
+      actor: payment.payer_name || payment.payer?.name || payment.reference_number,
       time: payment.payment_date || "Recent",
       status: "Success",
-    }))),
+    })),
   ].slice(0, 5);
+
+  const totalRevenue = Number(revenueReport?.total_collected || 0);
+  const averageAttendance =
+    classSummary.length > 0
+      ? Math.round(classSummary.reduce((sum, row) => sum + row.attendance, 0) / classSummary.length)
+      : 0;
 
   return (
     <div className="space-y-8 pb-20 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-start sm:items-center gap-4">
-          <div className="w-16 h-16 bg-primary rounded-[1.5rem] shadow-xl border-4 border-white flex items-center justify-center p-3">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-start gap-4 sm:items-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-[1.5rem] border-4 border-white bg-primary p-3 shadow-xl">
             {user?.school?.logo ? (
-              <img src={resolveMediaUrl(user.school.logo) || ""} alt="School" className="w-full h-full object-contain" />
+              <img src={resolveMediaUrl(user.school.logo) || ""} alt="School" className="h-full w-full object-contain" />
             ) : (
-              <Building2 className="w-full h-full text-secondary" />
+              <Building2 className="h-full w-full text-secondary" />
             )}
           </div>
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-primary font-headline tracking-tighter uppercase leading-tight">{user?.school?.name || "Institution Dashboard"}</h1>
+            <h1 className="font-headline text-2xl font-bold uppercase leading-tight tracking-tighter text-primary sm:text-3xl">
+              {user?.school?.name || "Institution Dashboard"}
+            </h1>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Badge className="bg-secondary text-primary border-none font-black h-5 px-3 text-[9px] tracking-widest uppercase">Admin Node</Badge>
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">• Principal: {user?.school?.principal}</span>
+              <Badge className="h-5 border-none bg-secondary px-3 text-[9px] font-black uppercase tracking-widest text-primary">Admin Node</Badge>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">• Principal: {user?.school?.principal}</span>
             </div>
           </div>
         </div>
-        <div className="flex w-full md:w-auto flex-col sm:flex-row gap-2">
-          <Button variant="outline" className="h-11 px-6 rounded-xl font-bold border-primary/10 bg-white gap-2 shadow-sm w-full sm:w-auto">
-            <FileDown className="w-4 h-4 text-primary" /> Reports
+        <div className="flex w-full flex-col gap-2 sm:flex-row md:w-auto">
+          <Button variant="outline" className="h-11 w-full gap-2 rounded-xl border-primary/10 bg-white px-6 font-bold shadow-sm sm:w-auto">
+            <FileDown className="h-4 w-4 text-primary" /> Reports
           </Button>
-          <Button className="h-11 px-8 shadow-xl font-black uppercase tracking-widest text-[10px] gap-2 rounded-xl w-full sm:w-auto">
-            <ShieldCheck className="w-4 h-4" /> Verify Node
+          <Button className="h-11 w-full gap-2 rounded-xl px-8 text-[10px] font-black uppercase tracking-widest shadow-xl sm:w-auto">
+            <ShieldCheck className="h-4 w-4" /> Verify Node
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         {[
           { label: "Active Enrollment", value: totalStudents, isLoading: studentsLoading, icon: GraduationCap, color: "text-blue-600", bg: "bg-blue-50" },
           { label: "Staff Registry", value: totalStaff, isLoading: staffLoading, icon: Users, color: "text-purple-600", bg: "bg-purple-50" },
-          { label: "Collection Velocity", value: `${totalRevenue > 0 ? Math.round((totalRevenue / 100000) * 100) : 0}%`, isLoading: false, icon: Coins, color: "text-emerald-600", bg: "bg-emerald-50" },
-          { label: "System Integrity", value: "Optimal", isLoading: false, icon: ShieldCheck, color: "text-primary", bg: "bg-primary/5" },
-        ].map((stat, i) => (
-          <Card key={i} className="border-none shadow-sm group hover:shadow-md transition-all">
-            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">{stat.label}</CardTitle>
-              <div className={cn("p-2 rounded-lg", stat.bg)}>
-                <stat.icon className={cn("w-4 h-4", stat.color)} />
+          { label: "Total Revenue", value: formatMoney(totalRevenue), isLoading: false, icon: Coins, color: "text-emerald-600", bg: "bg-emerald-50" },
+          { label: "Attendance Health", value: `${averageAttendance}%`, isLoading: attendanceLoading, icon: ShieldCheck, color: "text-primary", bg: "bg-primary/5" },
+        ].map((stat) => (
+          <Card key={stat.label} className="group border-none shadow-sm transition-all hover:shadow-md">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{stat.label}</CardTitle>
+              <div className={cn("rounded-lg p-2", stat.bg)}>
+                <stat.icon className={cn("h-4 w-4", stat.color)} />
               </div>
             </CardHeader>
             <CardContent>
               {stat.isLoading ? (
-                <div className="h-8 w-20 bg-gray-200 animate-pulse rounded" />
+                <div className="h-8 w-20 animate-pulse rounded bg-gray-200" />
               ) : (
-                <div className="text-2xl font-black text-primary">{typeof stat.value === 'number' ? stat.value.toLocaleString() : stat.value}</div>
+                <div className="text-2xl font-black text-primary">{typeof stat.value === "number" ? stat.value.toLocaleString() : stat.value}</div>
               )}
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <Card className="lg:col-span-8 border-none shadow-xl overflow-hidden rounded-[2rem] sm:rounded-[2.5rem] bg-white">
-          <CardHeader className="bg-primary/5 p-5 sm:p-8 border-b flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+        <Card className="overflow-hidden rounded-[2rem] border-none bg-white shadow-xl sm:rounded-[2.5rem] lg:col-span-8">
+          <CardHeader className="flex flex-col gap-4 border-b bg-primary/5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-8">
             <div>
-              <CardTitle className="text-xl font-black text-primary uppercase tracking-tighter flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-secondary"/> Pedagogical Velocity
+              <CardTitle className="flex items-center gap-2 text-xl font-black uppercase tracking-tighter text-primary">
+                <TrendingUp className="h-5 w-5 text-secondary" /> Pedagogical Performance
               </CardTitle>
-              <CardDescription>Aggregate performance trends across all class streams.</CardDescription>
+              <CardDescription>Average annual performance from the real student records grouped by class.</CardDescription>
             </div>
           </CardHeader>
-          <CardContent className="h-[300px] sm:h-[350px] pt-6 sm:pt-10">
+          <CardContent className="h-[300px] pt-6 sm:h-[350px] sm:pt-10">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={DATA_PERIODS.monthly}>
+              <AreaChart data={performanceSeries}>
                 <defs>
                   <linearGradient id="colorAdminPerf" x1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#264D73" stopOpacity={0.15}/>
-                    <stop offset="95%" stopColor="#264D73" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#264D73" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="#264D73" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.1} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold' }} />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: "bold" }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
-                <RechartsTooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
-                <Area name="Avg Performance" type="monotone" dataKey="performance" stroke="#264D73" strokeWidth={4} fill="url(#colorAdminPerf)" />
+                <RechartsTooltip contentStyle={{ borderRadius: "1rem", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }} />
+                <Area name="Average Score" type="monotone" dataKey="performance" stroke="#264D73" strokeWidth={4} fill="url(#colorAdminPerf)" />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-4 border-none shadow-xl overflow-hidden rounded-[2rem] sm:rounded-[2.5rem] bg-white flex flex-col">
-          <CardHeader className="bg-primary p-5 sm:p-8 text-white">
-            <CardTitle className="text-xl font-black uppercase tracking-tight flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-secondary" />
+        <Card className="flex flex-col overflow-hidden rounded-[2rem] border-none bg-white shadow-xl sm:rounded-[2.5rem] lg:col-span-4">
+          <CardHeader className="bg-primary p-5 text-white sm:p-8">
+            <CardTitle className="flex items-center gap-2 text-xl font-black uppercase tracking-tight">
+              <ShieldCheck className="h-5 w-5 text-secondary" />
               Governance Log
             </CardTitle>
             <CardDescription className="text-white/60">Recent administrative actions.</CardDescription>
           </CardHeader>
           <CardContent className="flex-1 p-0">
-            {governanceLogs.length ? governanceLogs.map((log, i) => (
-              <div key={i} className="p-6 border-b last:border-0 hover:bg-accent/10 transition-colors flex items-center justify-between">
-                <div className="space-y-1">
-                  <p className="text-xs font-black text-primary uppercase">{log.action}</p>
-                  <p className="text-[10px] text-muted-foreground font-bold">{log.actor} • {log.time}</p>
+            {governanceLogs.length ? (
+              governanceLogs.map((log, index) => (
+                <div key={`${log.action}-${index}`} className="flex items-center justify-between border-b p-6 transition-colors last:border-0 hover:bg-accent/10">
+                  <div className="space-y-1">
+                    <p className="text-xs font-black uppercase text-primary">{log.action}</p>
+                    <p className="text-[10px] font-bold text-muted-foreground">{log.actor} • {log.time}</p>
+                  </div>
+                  <Badge className={cn("h-5 border-none px-2 text-[8px] font-black uppercase", log.status === "Success" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>
+                    {log.status}
+                  </Badge>
                 </div>
-                <Badge className={cn(
-                  "text-[8px] font-black uppercase border-none px-2 h-5",
-                  log.status === 'Success' ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
-                )}>
-                  {log.status}
-                </Badge>
-              </div>
-            )) : (
-              <div className="p-6 text-sm text-muted-foreground">
-                Governance activity will appear here as admissions, billing, and staff actions happen.
-              </div>
+              ))
+            ) : (
+              <div className="p-6 text-sm text-muted-foreground">Governance activity will appear here as admissions, billing, and staff actions happen.</div>
             )}
           </CardContent>
         </Card>
       </div>
 
-      <Card className="border-none shadow-xl overflow-hidden rounded-[2rem] sm:rounded-[2.5rem] bg-white">
-        <CardHeader className="bg-white border-b p-5 sm:p-8">
-          <CardTitle className="text-xl font-black text-primary uppercase tracking-tighter flex items-center gap-2">
-            <GraduationCap className="w-5 h-5 text-secondary" />
+      <Card className="overflow-hidden rounded-[2rem] border-none bg-white shadow-xl sm:rounded-[2.5rem]">
+        <CardHeader className="border-b bg-white p-5 sm:p-8">
+          <CardTitle className="flex items-center gap-2 text-xl font-black uppercase tracking-tighter text-primary">
+            <GraduationCap className="h-5 w-5 text-secondary" />
             Academic Stream Summary
           </CardTitle>
-          <CardDescription>Consolidated metrics for each class level.</CardDescription>
+          <CardDescription>Live class enrollment, performance, attendance, and school share distribution.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
-            <TableHeader className="bg-accent/10 uppercase text-[9px] font-black tracking-widest">
+            <TableHeader className="bg-accent/10 text-[9px] font-black uppercase tracking-widest">
               <TableRow>
-                <TableHead className="pl-8 py-4">Class</TableHead>
+                <TableHead className="py-4 pl-8">Class</TableHead>
                 <TableHead className="text-center">Students</TableHead>
                 <TableHead className="text-center">Average</TableHead>
                 <TableHead className="text-center">Attendance</TableHead>
-                <TableHead className="text-right pr-8">Revenue</TableHead>
+                <TableHead className="pr-8 text-right">Enrollment Share</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {liveClassSummary.map((cls, i) => (
-                <TableRow key={i} className="hover:bg-primary/5 transition-colors border-b last:border-0 h-16">
-                  <TableCell className="pl-8 font-black text-primary uppercase text-xs">{cls.class}</TableCell>
-                  <TableCell className="text-center font-bold text-sm">{cls.students}</TableCell>
+              {classSummary.map((row) => (
+                <TableRow key={row.className} className="h-16 border-b transition-colors last:border-0 hover:bg-primary/5">
+                  <TableCell className="pl-8 text-xs font-black uppercase text-primary">{row.className}</TableCell>
+                  <TableCell className="text-center text-sm font-bold">{row.students}</TableCell>
                   <TableCell className="text-center">
-                    <Badge className={cn("font-black border-none text-[10px]",
-                      cls.average >= 15 ? "bg-green-100 text-green-700" : cls.average >= 12 ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"
-                    )}>{cls.average}</Badge>
+                    <Badge className={cn("border-none text-[10px] font-black", row.average >= 15 ? "bg-green-100 text-green-700" : row.average >= 12 ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>
+                      {row.average}
+                    </Badge>
                   </TableCell>
-                  <TableCell className="text-center font-bold text-sm">{totalStudents ? Math.max(70, Math.min(100, 100 - cls.students)) : 0}%</TableCell>
-                  <TableCell className="text-right pr-8">
-                    <Progress value={cls.revenue} className="h-1.5 w-20 ml-auto" />
-                    <span className="text-[9px] font-black text-muted-foreground mt-1 block">{cls.revenue}%</span>
+                  <TableCell className="text-center text-sm font-bold">{row.attendance}%</TableCell>
+                  <TableCell className="pr-8 text-right">
+                    <Progress value={row.enrollmentShare} className="ml-auto h-1.5 w-20" />
+                    <span className="mt-1 block text-[9px] font-black text-muted-foreground">{row.enrollmentShare}%</span>
                   </TableCell>
                 </TableRow>
               ))}
-              {!liveClassSummary.length && (
+              {!classSummary.length ? (
                 <TableRow>
                   <TableCell colSpan={5} className="h-20 text-center text-sm text-muted-foreground">
-                    Class metrics will appear here once students are registered.
+                    Class metrics will appear here once students are registered and activity is recorded.
                   </TableCell>
                 </TableRow>
-              )}
+              ) : null}
             </TableBody>
           </Table>
         </CardContent>

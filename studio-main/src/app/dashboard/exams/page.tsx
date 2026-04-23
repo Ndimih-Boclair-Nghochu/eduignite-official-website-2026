@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useI18n } from "@/lib/i18n-context";
 import { useSequences, useSubjects, useActiveSequence } from "@/lib/hooks/useGrades";
 import { useStudents } from "@/lib/hooks/useStudents";
+import { useSchoolSettings } from "@/lib/hooks/useSchools";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -90,11 +91,13 @@ export default function ExamsPage() {
   const isStudent = user?.role === "STUDENT";
 
   const canScheduleExams = isSchoolAdmin || isSubAdmin || isTeacher;
+  const { data: schoolSettings } = useSchoolSettings(user?.school?.id || "");
 
   // Fetch real subjects and sequences from API
   const { data: subjectsData } = useSubjects();
   const { data: sequencesData } = useSequences();
   const { data: activeSequenceData } = useActiveSequence();
+  const { data: studentsData } = useStudents();
 
   // Build onsite exams from real sequences data
   useEffect(() => {
@@ -127,16 +130,13 @@ export default function ExamsPage() {
   }, [isTeacher, subjectsData, user]);
 
   const availableClasses = useMemo(() => {
-    if (isSchoolAdmin) return ALL_CLASSES;
-    if (isSubAdmin) {
-      // Mock sub-admin section assignment
-      const subAdminSection = "Anglophone Section";
-      if (subAdminSection === "Anglophone Section") return ANGLOPHONE_CLASSES;
-      if (subAdminSection === "Francophone Section") return FRANCOPHONE_CLASSES;
-      if (subAdminSection === "Technical Section") return TECHNICAL_CLASSES;
-    }
+    const studentClasses = Array.from(
+      new Set((studentsData?.results ?? []).map((student: any) => student.student_class).filter(Boolean))
+    );
+    if (studentClasses.length) return studentClasses;
+    if (schoolSettings?.class_levels?.filter(Boolean)?.length) return schoolSettings.class_levels;
     return ALL_CLASSES;
-  }, [isSchoolAdmin, isSubAdmin]);
+  }, [studentsData, schoolSettings]);
 
   const filteredSubjects = useMemo(() => {
     if (isTeacher) {
@@ -369,7 +369,7 @@ export default function ExamsPage() {
                       <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Class</Label>
                       <Select onValueChange={(v) => setOnsiteFormData({...onsiteFormData, class: v})}>
                         <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl font-bold"><SelectValue placeholder="Choose Class" /></SelectTrigger>
-                        <SelectContent>{ALL_CLASSES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                        <SelectContent>{availableClasses.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">

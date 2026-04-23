@@ -1,11 +1,19 @@
 
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useI18n } from "@/lib/i18n-context";
 import { useSubjects } from "@/lib/hooks/useGrades";
-import { useStudents } from "@/lib/hooks/useStudents";
+import { useSchoolSettings } from "@/lib/hooks/useSchools";
+import {
+  useAssignments,
+  useAssignmentSubmissions,
+  useCreateAssignment,
+  useDeleteAssignment,
+  useGradeAssignmentSubmission,
+  useMyAssignmentSubmissions,
+} from "@/lib/hooks/useAssignments";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -49,12 +57,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { getApiErrorMessage } from "@/lib/api/errors";
 
-const CLASSES = ["6ème / Form 1", "5ème / Form 2", "4ème / Form 3", "3ème / Form 4", "2nde / Form 5", "1ère / Lower Sixth", "Terminale / Upper Sixth"];
-
-const MOCK_ASSIGNMENTS: any[] = [];
-
-const MOCK_SUBMISSIONS: any[] = [];
+function parseSubjectPlacement(level?: string) {
+  const raw = (level || "").trim();
+  if (!raw) return [];
+  if (!raw.includes("||")) {
+    return raw.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+  const [, classes] = raw.split("||");
+  return (classes || "").split(",").map((item) => item.trim()).filter(Boolean);
+}
 
 export default function AssignmentsPage() {
   const { user } = useAuth();
@@ -64,76 +77,155 @@ export default function AssignmentsPage() {
   
   const [isCreating, setIsCreating] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [assignments, setAssignments] = useState(MOCK_ASSIGNMENTS);
   const [viewingResponse, setViewingResponse] = useState<any>(null);
   const [gradingAssignment, setGradingAssignment] = useState<any>(null);
   const [reviewingSubmission, setReviewingSubmission] = useState<any>(null);
+  const [reviewScore, setReviewScore] = useState("");
+  const [reviewFeedback, setReviewFeedback] = useState("");
   
   const [newAssignment, setNewAssignment] = useState({
     title: "",
-    subjectId: "PHY101",
-    targetClass: "2nde / Form 5",
+    subjectId: "",
+    targetClass: "",
     dueDate: "",
     maxMarks: 20,
     instructions: ""
   });
 
-  const isTeacher = user?.role === "TEACHER" || user?.role === "SCHOOL_ADMIN";
+  const isTeacher = user?.role === "TEACHER" || user?.role === "SCHOOL_ADMIN" || user?.role === "SUB_ADMIN";
+  const { data: schoolSettings } = useSchoolSettings(user?.school?.id || "");
+  const { data: assignmentsData, isLoading: assignmentsLoading } = useAssignments({ limit: 200 });
+  const { data: mySubmissionsData } = useMyAssignmentSubmissions({ limit: 200 });
+  const { data: submissionsData } = useAssignmentSubmissions(gradingAssignment ? { assignment: gradingAssignment.id, limit: 200 } : undefined);
+  const createAssignmentMutation = useCreateAssignment();
+  const deleteAssignmentMutation = useDeleteAssignment();
+  const gradeSubmissionMutation = useGradeAssignmentSubmission();
 
   // Fetch real subjects from backend for the assignment subject dropdown
   const { data: subjectsApiData } = useSubjects();
-  const subjectOptions = subjectsApiData?.results?.length
-    ? subjectsApiData.results.map((s: any) => ({ id: s.code || s.id, name: s.name }))
-    : [
-        { id: "PHY101", name: "Advanced Physics" },
-        { id: "MAT101", name: "Mathematics" },
-        { id: "LIT101", name: "English Literature" },
-        { id: "CHM101", name: "General Chemistry" },
-      ];
+  const subjectOptions = useMemo(() => {
+    const list = subjectsApiData?.results || [];
+    const scoped = user?.role === "TEACHER"
+      ? list.filter((subject: any) => subject.teacher === user?.id || subject.teacher === user?.uid)
+      : list;
+    return scoped.map((s: any) => ({
+      id: s.id,
+      code: s.code || s.id,
+      name: s.name,
+      classes: parseSubjectPlacement(s.level),
+    }));
+  }, [subjectsApiData?.results, user?.id, user?.role, user?.uid]);
 
-  const activeTasks = assignments.filter(a => a.status === 'upcoming' && new Date(a.dueDate) > new Date());
-  const myWork = assignments.filter(a => a.status === 'submitted' || a.status === 'graded');
-  const historyTasks = assignments;
+  const availableClasses = useMemo(() => {
+    const subjectClasses = subjectOptions.flatMap((subject) => subject.classes);
+    const schoolClasses = schoolSettings?.class_levels || [];
+    return Array.from(new Set([...subjectClasses, ...schoolClasses].filter(Boolean)));
+  }, [schoolSettings?.class_levels, subjectOptions]);
 
-  const handleCreateAssignment = () => {
-    if (!newAssignment.title) return;
-    setIsProcessing(true);
-    setTimeout(() => {
-      const newTask = {
-        id: Math.random().toString(),
-        ...newAssignment,
-        courseName: "Physics",
-        status: 'upcoming',
-        type: "both"
+  const selectedSubjectOption = useMemo(
+    () => subjectOptions.find((subject) => subject.id === newAssignment.subjectId),
+    [newAssignment.subjectId, subjectOptions]
+  );
+
+  const targetClassOptions = selectedSubjectOption?.classes?.length ? selectedSubjectOption.classes : availableClasses;
+
+  useEffect(() => {
+    if (!subjectOptions.length) return;
+    setNewAssignment((current) => {
+      const nextSubjectId = subjectOptions.some((subject) => subject.id === current.subjectId) ? current.subjectId : subjectOptions[0].id;
+      const nextSubject = subjectOptions.find((subject) => subject.id === nextSubjectId);
+      const nextClasses = nextSubject?.classes?.length ? nextSubject.classes : availableClasses;
+      return {
+        ...current,
+        subjectId: nextSubjectId,
+        targetClass: nextClasses.includes(current.targetClass) ? current.targetClass : nextClasses[0] || availableClasses[0] || "",
       };
-      setAssignments([newTask, ...assignments]);
+    });
+  }, [availableClasses, subjectOptions]);
+
+  const assignmentRecords = useMemo(() => {
+    const records = assignmentsData?.results || [];
+    return records.map((assignment: any) => ({
+      id: assignment.id,
+      title: assignment.title,
+      courseName: assignment.subject_name || "Subject",
+      dueDate: assignment.due_date,
+      maxMarks: assignment.max_marks,
+      type: assignment.submission_type,
+      targetClass: assignment.target_class,
+      instructions: assignment.instructions,
+      status: assignment.status,
+    }));
+  }, [assignmentsData?.results]);
+
+  const submissionByAssignment = useMemo(() => {
+    const submissions = mySubmissionsData?.results || [];
+    return submissions.reduce((acc: Record<string, any>, submission: any) => {
+      acc[submission.assignment] = submission;
+      return acc;
+    }, {});
+  }, [mySubmissionsData?.results]);
+
+  const studentAssignments = useMemo(() => {
+    return assignmentRecords.map((assignment) => {
+      const submission = submissionByAssignment[assignment.id];
+      const dueDate = new Date(assignment.dueDate);
+      const isMissed = !submission && dueDate < new Date();
+      return {
+        ...assignment,
+        status: submission?.status || (isMissed ? 'missed' : 'upcoming'),
+        score: submission?.score,
+        submittedAt: submission?.created,
+        submittedContent: submission?.content,
+        submittedFileName: submission?.attachment_name,
+        attachment_data: submission?.attachment_data,
+        submissionId: submission?.id,
+      };
+    });
+  }, [assignmentRecords, submissionByAssignment]);
+
+  const activeTasks = studentAssignments.filter((assignment) => assignment.status === 'upcoming');
+  const myWork = studentAssignments.filter((assignment) => assignment.status === 'submitted' || assignment.status === 'graded');
+  const historyTasks = studentAssignments;
+
+  const handleCreateAssignment = async (status: 'draft' | 'published') => {
+    if (!newAssignment.title || !newAssignment.subjectId || !newAssignment.targetClass || !newAssignment.dueDate) return;
+    setIsProcessing(true);
+    try {
+      await createAssignmentMutation.mutateAsync({
+        subject: newAssignment.subjectId,
+        title: newAssignment.title,
+        instructions: newAssignment.instructions,
+        target_class: newAssignment.targetClass,
+        due_date: new Date(`${newAssignment.dueDate}T23:59:00`).toISOString(),
+        max_marks: newAssignment.maxMarks,
+        submission_type: 'both',
+        status,
+      });
       setIsCreating(false);
+      setNewAssignment({
+        title: "",
+        subjectId: subjectOptions[0]?.id || "",
+        targetClass: targetClassOptions[0] || "",
+        dueDate: "",
+        maxMarks: 20,
+        instructions: ""
+      });
+      toast({ title: status === 'published' ? "Task Published" : "Draft Saved", description: status === 'published' ? "The assignment is now visible to students." : "The assignment has been stored successfully." });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Assignment Failed", description: getApiErrorMessage(error, "Could not save this assignment.") });
+    } finally {
       setIsProcessing(false);
-      toast({ title: "Task Published", description: "The assignment is now visible to students." });
-    }, 800);
+    }
   };
 
-  const handleSaveDraft = () => {
-    if (!newAssignment.title) return;
-    setIsProcessing(true);
-    setTimeout(() => {
-      const newTask = {
-        id: Math.random().toString(),
-        ...newAssignment,
-        courseName: "Physics",
-        status: 'draft',
-        type: "both"
-      };
-      setAssignments([newTask, ...assignments]);
-      setIsCreating(false);
-      setIsProcessing(false);
-      toast({ title: "Draft Saved", description: "The assignment has been stored in your local registry." });
-    }, 800);
-  };
-
-  const handleDeleteAssignment = (id: string) => {
-    setAssignments(prev => prev.filter(a => a.id !== id));
-    toast({ variant: "destructive", title: "Assignment Deleted", description: "The task has been removed from the registry." });
+  const handleDeleteAssignment = async (id: string) => {
+    try {
+      await deleteAssignmentMutation.mutateAsync(id);
+      toast({ variant: "destructive", title: "Assignment Deleted", description: "The task has been removed from the registry." });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Delete Failed", description: getApiErrorMessage(error, "Could not delete this assignment.") });
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -337,9 +429,17 @@ export default function AssignmentsPage() {
                       </div>
                       <span className="text-sm font-bold text-primary">{viewingResponse.submittedFileName}</span>
                     </div>
-                    <Button variant="ghost" size="sm" className="gap-2 text-[10px] font-black uppercase tracking-widest" onClick={() => toast({ title: "Download Started" })}>
-                      <Download className="w-3.5 h-3.5" /> Download
-                    </Button>
+                    {viewingResponse?.submittedFileName ? (
+                      <a
+                        href={viewingResponse.attachment_data || "#"}
+                        download={viewingResponse.submittedFileName}
+                        className="inline-flex"
+                      >
+                        <Button variant="ghost" size="sm" className="gap-2 text-[10px] font-black uppercase tracking-widest">
+                          <Download className="w-3.5 h-3.5" /> Download
+                        </Button>
+                      </a>
+                    ) : null}
                   </div>
                 </div>
               )}
@@ -380,7 +480,11 @@ export default function AssignmentsPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {assignments.map((task) => (
+        {assignmentsLoading ? (
+          <div className="col-span-full flex justify-center py-20">
+            <Loader2 className="w-10 h-10 animate-spin text-primary/20" />
+          </div>
+        ) : assignmentRecords.map((task) => (
           <Card key={task.id} className="border-none shadow-sm overflow-hidden group hover:shadow-md transition-all bg-white rounded-2xl">
             <div className={cn("h-1.5 w-full", task.status === 'draft' ? "bg-slate-400" : "bg-primary")} />
             <CardHeader>
@@ -476,7 +580,7 @@ export default function AssignmentsPage() {
                   <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl font-bold">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>{CLASSES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                  <SelectContent>{targetClassOptions.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
@@ -494,10 +598,10 @@ export default function AssignmentsPage() {
             </div>
           </div>
           <DialogFooter className="bg-accent/20 p-6 border-t border-accent flex flex-col sm:flex-row gap-3">
-            <Button variant="outline" onClick={handleSaveDraft} disabled={isProcessing || !newAssignment.title} className="flex-1 h-14 rounded-2xl font-bold gap-2 bg-white">
+            <Button variant="outline" onClick={() => handleCreateAssignment('draft')} disabled={isProcessing || !newAssignment.title} className="flex-1 h-14 rounded-2xl font-bold gap-2 bg-white">
               <Save className="w-4 h-4" /> Save Draft
             </Button>
-            <Button onClick={handleCreateAssignment} disabled={isProcessing || !newAssignment.title} className="flex-1 h-14 rounded-2xl shadow-xl font-black uppercase tracking-widest text-xs gap-3 bg-primary text-white hover:bg-primary/90">
+            <Button onClick={() => handleCreateAssignment('published')} disabled={isProcessing || !newAssignment.title} className="flex-1 h-14 rounded-2xl shadow-xl font-black uppercase tracking-widest text-xs gap-3 bg-primary text-white hover:bg-primary/90">
               {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
               Publish Assignment
             </Button>
@@ -538,22 +642,21 @@ export default function AssignmentsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {MOCK_SUBMISSIONS.map((sub) => (
+                {(submissionsData?.results || []).map((sub) => (
                   <TableRow key={sub.id} className="hover:bg-accent/5 transition-colors border-b border-accent/10">
                     <TableCell className="pl-8 py-4">
                       <div className="flex items-center gap-3">
                         <Avatar className="h-10 w-10 border-2 border-white shadow-sm ring-1 ring-accent">
-                          <AvatarImage src={sub.avatar} />
-                          <AvatarFallback className="bg-primary/5 text-primary font-bold">{sub.studentName.charAt(0)}</AvatarFallback>
+                          <AvatarFallback className="bg-primary/5 text-primary font-bold">{sub.student_name?.charAt(0)}</AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="font-bold text-sm text-primary leading-tight">{sub.studentName}</p>
-                          <p className="text-[9px] font-mono text-muted-foreground uppercase">{sub.studentId}</p>
+                          <p className="font-bold text-sm text-primary leading-tight">{sub.student_name}</p>
+                          <p className="text-[9px] font-mono text-muted-foreground uppercase">{sub.student_admission}</p>
                         </div>
                       </div>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground font-medium">
-                      {new Date(sub.submittedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                      {sub.created ? new Date(sub.created).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'N/A'}
                     </TableCell>
                     <TableCell className="text-center">
                       <Badge className={cn(
@@ -571,7 +674,11 @@ export default function AssignmentsPage() {
                         variant="ghost" 
                         size="sm" 
                         className="text-[10px] font-black uppercase gap-2 hover:bg-primary hover:text-white"
-                        onClick={() => setReviewingSubmission({ ...sub, maxMarks: gradingAssignment?.maxMarks })}
+                        onClick={() => {
+                          setReviewingSubmission({ ...sub, maxMarks: gradingAssignment?.maxMarks });
+                          setReviewScore(sub.score ? String(sub.score) : "");
+                          setReviewFeedback(sub.feedback || "");
+                        }}
                       >
                         <Eye className="w-3.5 h-3.5" /> Review
                       </Button>
@@ -597,12 +704,11 @@ export default function AssignmentsPage() {
           <DialogHeader className="bg-primary p-8 text-white relative">
             <div className="flex items-center gap-4">
               <Avatar className="h-12 w-12 border-2 border-white/20">
-                <AvatarImage src={reviewingSubmission?.avatar} />
-                <AvatarFallback className="bg-white/10">{reviewingSubmission?.studentName.charAt(0)}</AvatarFallback>
+                <AvatarFallback className="bg-white/10">{reviewingSubmission?.student_name?.charAt(0)}</AvatarFallback>
               </Avatar>
               <div>
                 <DialogTitle className="text-2xl font-black">Review Submission</DialogTitle>
-                <DialogDescription className="text-white/60">Evaluating work for {reviewingSubmission?.studentName}</DialogDescription>
+                <DialogDescription className="text-white/60">Evaluating work for {reviewingSubmission?.student_name}</DialogDescription>
               </div>
             </div>
             <Button variant="ghost" size="icon" onClick={() => setReviewingSubmission(null)} className="absolute top-4 right-4 text-white/40 hover:text-white">
@@ -620,7 +726,7 @@ export default function AssignmentsPage() {
               </div>
             </div>
 
-            {reviewingSubmission?.fileName && (
+            {reviewingSubmission?.attachment_name && (
               <div className="space-y-4">
                 <div className="flex items-center gap-2 border-b border-accent pb-2">
                   <Paperclip className="w-4 h-4 text-primary/40" />
@@ -631,11 +737,13 @@ export default function AssignmentsPage() {
                     <div className="p-2 bg-primary/5 rounded-lg text-primary">
                       <FileText className="w-5 h-5" />
                     </div>
-                    <span className="text-sm font-bold text-primary">{reviewingSubmission.fileName}</span>
+                    <span className="text-sm font-bold text-primary">{reviewingSubmission.attachment_name}</span>
                   </div>
-                  <Button variant="ghost" size="sm" className="gap-2 text-[10px] font-black uppercase tracking-widest" onClick={() => toast({ title: "Download Started" })}>
-                    <Download className="w-3.5 h-3.5" /> Download
-                  </Button>
+                  <a href={reviewingSubmission.attachment_data || "#"} download={reviewingSubmission.attachment_name} className="inline-flex">
+                    <Button variant="ghost" size="sm" className="gap-2 text-[10px] font-black uppercase tracking-widest">
+                      <Download className="w-3.5 h-3.5" /> Download
+                    </Button>
+                  </a>
                 </div>
               </div>
             )}
@@ -646,7 +754,8 @@ export default function AssignmentsPage() {
                   <div className="relative flex-1 w-full">
                     <Input 
                       type="number" 
-                      defaultValue={reviewingSubmission?.score || ""}
+                      value={reviewScore}
+                      onChange={(e) => setReviewScore(e.target.value)}
                       className="h-14 bg-white border-none rounded-2xl font-black text-2xl text-primary pl-6"
                       placeholder="0"
                     />
@@ -654,14 +763,32 @@ export default function AssignmentsPage() {
                   </div>
                   <Button 
                     className="h-14 w-full sm:w-auto px-8 rounded-2xl shadow-lg font-black uppercase tracking-widest text-xs gap-2"
-                    onClick={() => {
-                      setReviewingSubmission(null);
-                      toast({ title: "Score Synchronized", description: "The pedagogical record has been updated." });
+                    onClick={async () => {
+                      if (!reviewingSubmission?.id) return;
+                      try {
+                        await gradeSubmissionMutation.mutateAsync({
+                          id: reviewingSubmission.id,
+                          payload: {
+                            score: Number(reviewScore),
+                            feedback: reviewFeedback,
+                          },
+                        });
+                        setReviewingSubmission(null);
+                        toast({ title: "Score Synchronized", description: "The pedagogical record has been updated." });
+                      } catch (error) {
+                        toast({ variant: "destructive", title: "Grading failed", description: getApiErrorMessage(error, "Could not save that score.") });
+                      }
                     }}
                   >
                     <CheckCircle2 className="w-4 h-4" /> Save Score
                   </Button>
                </div>
+               <Textarea
+                 value={reviewFeedback}
+                 onChange={(e) => setReviewFeedback(e.target.value)}
+                 placeholder="Optional grading feedback..."
+                 className="min-h-[100px] bg-white border-none rounded-2xl"
+               />
             </div>
           </div>
         </DialogContent>

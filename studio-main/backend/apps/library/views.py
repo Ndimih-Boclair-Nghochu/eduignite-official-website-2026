@@ -12,6 +12,8 @@ from .serializers import (
     ReturnLoanSerializer, LibraryStatsSerializer
 )
 
+LIBRARY_MANAGEMENT_ROLES = ['LIBRARIAN', 'SCHOOL_ADMIN', 'SUB_ADMIN', 'SUPER_ADMIN', 'CEO', 'CTO', 'COO']
+
 
 class BookCategoryViewSet(viewsets.ModelViewSet):
     serializer_class = BookCategorySerializer
@@ -28,7 +30,7 @@ class BookCategoryViewSet(viewsets.ModelViewSet):
 
     def check_permissions(self, request):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            if request.user.role not in ['LIBRARIAN', 'SCHOOL_ADMIN', 'SUB_ADMIN', 'SUPER_ADMIN', 'CEO', 'CTO', 'COO']:
+            if request.user.role not in LIBRARY_MANAGEMENT_ROLES:
                 self.permission_denied(request)
         return super().check_permissions(request)
 
@@ -56,7 +58,7 @@ class BookViewSet(viewsets.ModelViewSet):
 
     def check_permissions(self, request):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            if request.user.role not in ['LIBRARIAN', 'SCHOOL_ADMIN', 'SUB_ADMIN', 'SUPER_ADMIN', 'CEO', 'CTO', 'COO']:
+            if request.user.role not in LIBRARY_MANAGEMENT_ROLES:
                 self.permission_denied(request)
         return super().check_permissions(request)
 
@@ -109,21 +111,21 @@ class BookLoanViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.role in ['librarian', 'school_admin', 'executive']:
+        if user.role in LIBRARY_MANAGEMENT_ROLES:
             return BookLoan.objects.filter(school=user.school)
         else:
             return BookLoan.objects.filter(borrower=user)
 
     def check_permissions(self, request):
         if self.action in ['create', 'destroy']:
-            if not (request.user.role in ['librarian', 'school_admin', 'executive']):
+            if request.user.role not in LIBRARY_MANAGEMENT_ROLES:
                 self.permission_denied(request)
         return super().check_permissions(request)
 
     @action(detail=False, methods=['post'])
     def issue(self, request):
         """Issue a book to a borrower"""
-        if request.user.role not in ['LIBRARIAN', 'SCHOOL_ADMIN', 'SUB_ADMIN', 'SUPER_ADMIN', 'CEO', 'CTO', 'COO']:
+        if request.user.role not in LIBRARY_MANAGEMENT_ROLES:
             return Response({'detail': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = IssueLoanSerializer(data=request.data)
@@ -135,7 +137,7 @@ class BookLoanViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def return_book(self, request, pk=None):
         """Mark a book loan as returned"""
-        if request.user.role not in ['LIBRARIAN', 'SCHOOL_ADMIN', 'SUB_ADMIN', 'SUPER_ADMIN', 'CEO', 'CTO', 'COO']:
+        if request.user.role not in LIBRARY_MANAGEMENT_ROLES:
             return Response({'detail': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
 
         loan = self.get_object()
@@ -155,7 +157,7 @@ class BookLoanViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def overdue(self, request):
         """Get all overdue loans"""
-        if request.user.role not in ['LIBRARIAN', 'SCHOOL_ADMIN', 'SUB_ADMIN', 'SUPER_ADMIN', 'CEO', 'CTO', 'COO']:
+        if request.user.role not in LIBRARY_MANAGEMENT_ROLES:
             return Response({'detail': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
 
         today = timezone.now().date()
@@ -171,9 +173,10 @@ class BookLoanViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def stats(self, request):
         """Get library statistics"""
-        if request.user.role not in ['LIBRARIAN', 'SCHOOL_ADMIN', 'SUB_ADMIN', 'SUPER_ADMIN', 'CEO', 'CTO', 'COO']:
+        if request.user.role not in LIBRARY_MANAGEMENT_ROLES:
             return Response({'detail': 'Not authorized'}, status=status.HTTP_403_FORBIDDEN)
 
+        from apps.students.models import Student
         today = timezone.now().date()
         stats = {
             'total_books': Book.objects.filter(school=request.user.school).count(),
@@ -185,7 +188,7 @@ class BookLoanViewSet(viewsets.ModelViewSet):
                 status='Active'
             ).count(),
             'low_stock_books': Book.objects.filter(school=request.user.school, available_copies__lt=3).count(),
-            'total_students': 0,
+            'total_students': Student.objects.filter(school=request.user.school).count(),
         }
         serializer = LibraryStatsSerializer(stats)
         return Response(serializer.data)

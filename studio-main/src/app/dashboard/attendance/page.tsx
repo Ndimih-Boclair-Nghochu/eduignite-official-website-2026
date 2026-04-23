@@ -51,8 +51,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { attendanceService } from "@/lib/api/services/attendance.service";
 import { studentsService } from "@/lib/api/services/students.service";
+import { useSubjects } from "@/lib/hooks/useGrades";
+import { useSchoolSettings } from "@/lib/hooks/useSchools";
 
-const CLASSES = ["6ème / Form 1", "5ème / Form 2", "4ème / Form 3", "3ème / Form 4", "2nde / Form 5", "1ère / Lower Sixth", "Terminale / Upper Sixth"];
+function parseSubjectPlacement(level?: string) {
+  const raw = (level || "").trim();
+  if (!raw) return [];
+  if (!raw.includes("||")) {
+    return raw.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+  const [, classes] = raw.split("||");
+  return (classes || "").split(",").map((item) => item.trim()).filter(Boolean);
+}
 
 export default function AttendancePage() {
   const { user } = useAuth();
@@ -74,6 +84,7 @@ export default function AttendancePage() {
   const [studentProfile, setStudentProfile] = useState<any>(null);
 
   const [selectedClass, setSelectedClass] = useState("");
+  const [selectedSubject, setSelectedSubject] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [bulkAttendanceData, setBulkAttendanceData] = useState<Record<string, string>>({});
   const [dateFrom, setDateFrom] = useState("");
@@ -82,6 +93,46 @@ export default function AttendancePage() {
   const isTeacher = user?.role === "TEACHER";
   const isStudent = user?.role === "STUDENT";
   const isAdmin = user?.role === "SCHOOL_ADMIN" || user?.role === "SUB_ADMIN";
+  const { data: schoolSettings } = useSchoolSettings(user?.school?.id || "");
+  const { data: subjectsData } = useSubjects({ limit: 200 });
+
+  const availableClasses = useMemo(() => {
+    const subjectList = subjectsData?.results || [];
+    const scopedSubjects = isTeacher
+      ? subjectList.filter((subject: any) => subject.teacher === user?.id || subject.teacher === user?.uid)
+      : subjectList;
+    const subjectClasses = scopedSubjects.flatMap((subject: any) => parseSubjectPlacement(subject.level));
+    const schoolClasses = schoolSettings?.class_levels || [];
+    return Array.from(new Set([...subjectClasses, ...schoolClasses].filter(Boolean)));
+  }, [isTeacher, schoolSettings?.class_levels, subjectsData?.results, user?.id, user?.uid]);
+
+  const availableSubjects = useMemo(() => {
+    const subjectList = subjectsData?.results || [];
+    const scopedSubjects = isTeacher
+      ? subjectList.filter((subject: any) => subject.teacher === user?.id || subject.teacher === user?.uid)
+      : subjectList;
+
+    return scopedSubjects.filter((subject: any) => {
+      if (!selectedClass) return true;
+      const classes = parseSubjectPlacement(subject.level);
+      return classes.length === 0 || classes.includes(selectedClass);
+    });
+  }, [isTeacher, selectedClass, subjectsData?.results, user?.id, user?.uid]);
+
+  useEffect(() => {
+    if (!availableClasses.length) return;
+    setSelectedClass((current) => (current && availableClasses.includes(current) ? current : availableClasses[0]));
+  }, [availableClasses]);
+
+  useEffect(() => {
+    if (!availableSubjects.length) {
+      setSelectedSubject("");
+      return;
+    }
+    setSelectedSubject((current) => (
+      current && availableSubjects.some((subject: any) => subject.id === current) ? current : availableSubjects[0].id
+    ));
+  }, [availableSubjects]);
 
   // Load attendance data based on role
   useEffect(() => {
@@ -167,6 +218,7 @@ export default function AttendancePage() {
         student_class: selectedClass,
         date: selectedDate,
         period: "full_day",
+        subject: selectedSubject || undefined,
       } as any);
       setAttendanceSessions([data.session, ...attendanceSessions]);
       setBulkAttendanceData({});
@@ -332,7 +384,7 @@ export default function AttendancePage() {
                       <SelectValue placeholder="Choose class..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {CLASSES.map((cls) => (
+                      {availableClasses.map((cls) => (
                         <SelectItem key={cls} value={cls}>
                           {cls}
                         </SelectItem>
@@ -341,6 +393,25 @@ export default function AttendancePage() {
                   </Select>
                 </div>
 
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase">Subject</Label>
+                  <Select value={selectedSubject} onValueChange={setSelectedSubject}>
+                    <SelectTrigger className="h-12 rounded-xl">
+                      <SelectValue placeholder="Choose subject..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableSubjects.map((subject: any) => (
+                        <SelectItem key={subject.id} value={subject.id}>
+                          {subject.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-xs font-bold uppercase">Date</Label>
                   <Input
@@ -507,7 +578,7 @@ export default function AttendancePage() {
                       <SelectValue placeholder="Choose class..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {CLASSES.map((cls) => (
+                      {availableClasses.map((cls) => (
                         <SelectItem key={cls} value={cls}>
                           {cls}
                         </SelectItem>

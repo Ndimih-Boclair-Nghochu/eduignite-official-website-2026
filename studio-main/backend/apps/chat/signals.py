@@ -1,7 +1,11 @@
 from django.db.models.signals import post_save, post_delete
+from django.db import transaction
 from django.dispatch import receiver
 from django.utils import timezone
+import logging
 from .models import Message, Conversation
+
+logger = logging.getLogger(__name__)
 
 
 @receiver(post_save, sender=Message)
@@ -18,14 +22,21 @@ def handle_offline_notification(sender, instance, created, **kwargs):
     """Send offline notifications when message is created."""
     if created and not instance.is_deleted:
         from .tasks import send_offline_notification
-        from apps.users.models import User
 
         # Get conversation participants
         conversation = instance.conversation
         recipients = conversation.participants.exclude(id=instance.sender.id)
 
         for recipient in recipients:
-            # Check if user is connected via WebSocket
-            # For now, we'll queue the notification task to be sent
-            # In production, you'd integrate with your WebSocket connection tracking
-            send_offline_notification.delay(recipient.id, instance.id)
+            def queue_notification(recipient_id=recipient.id, message_id=instance.id):
+                try:
+                    send_offline_notification.delay(recipient_id, message_id)
+                except Exception as exc:
+                    logger.warning(
+                        "Offline chat notification queue failed for user %s and message %s: %s",
+                        recipient_id,
+                        message_id,
+                        exc,
+                    )
+
+            transaction.on_commit(queue_notification)

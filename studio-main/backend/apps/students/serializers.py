@@ -102,8 +102,8 @@ class StudentCreateSerializer(serializers.ModelSerializer):
     phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
     whatsapp = serializers.CharField(max_length=20, required=False, allow_blank=True)
     password = serializers.CharField(write_only=True, min_length=8, required=False, allow_blank=True)
-    class_level = serializers.ChoiceField(choices=Student.CLASS_LEVEL_CHOICES, required=False, default='form1')
-    section = serializers.ChoiceField(choices=Student.SECTION_CHOICES, required=False, default='general')
+    class_level = serializers.CharField(max_length=100, required=False, allow_blank=True, default='Form 1')
+    section = serializers.CharField(max_length=100, required=False, allow_blank=True, default='General')
     gender = serializers.ChoiceField(choices=Student.GENDER_CHOICES, required=False, default='other')
     guardian_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
     guardian_phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
@@ -175,8 +175,8 @@ class StudentCreateSerializer(serializers.ModelSerializer):
         if not full_name:
             raise serializers.ValidationError({'name': 'Provide the student full name.'})
         attrs['name'] = full_name
-        attrs['class_level'] = attrs.get('class_level') or self._infer_class_level(attrs.get('student_class', ''))
-        attrs['section'] = attrs.get('section') or self._infer_section(attrs.get('student_class', ''))
+        attrs['class_level'] = (attrs.get('class_level') or self._infer_class_level(attrs.get('student_class', ''))).strip()
+        attrs['section'] = (attrs.get('section') or self._infer_section(attrs.get('student_class', ''))).strip()
 
         if attrs.get('create_parent_account'):
             if not attrs.get('parent_name', '').strip() or not attrs.get('parent_email', '').strip():
@@ -194,37 +194,42 @@ class StudentCreateSerializer(serializers.ModelSerializer):
     def _infer_class_level(self, student_class):
         label = (student_class or '').strip().lower()
         if 'upper sixth' in label or 'upper 6' in label or 'uppersixth' in label:
-            return 'upper_sixth'
+            return 'Upper Sixth'
         if 'lower sixth' in label or 'lower 6' in label or 'lowersixth' in label:
-            return 'lower_sixth'
+            return 'Lower Sixth'
+        normalized = label.replace(' ', '')
         for level in ['form1', 'form2', 'form3', 'form4', 'form5']:
-            if level in label.replace(' ', ''):
-                return level
+            if level in normalized:
+                return level.replace('form', 'Form ')
         if 'form 1' in label:
-            return 'form1'
+            return 'Form 1'
         if 'form 2' in label:
-            return 'form2'
+            return 'Form 2'
         if 'form 3' in label:
-            return 'form3'
+            return 'Form 3'
         if 'form 4' in label:
-            return 'form4'
+            return 'Form 4'
         if 'form 5' in label:
-            return 'form5'
-        return 'form1'
+            return 'Form 5'
+        return 'Form 1'
 
     def _infer_section(self, student_class):
         label = (student_class or '').strip().lower()
         if 'bilingual' in label:
-            return 'bilingual'
+            return 'Bilingual'
         if 'technical' in label:
-            return 'technical'
+            return 'Technical'
         if 'science' in label:
-            return 'science'
+            return 'Science'
         if 'arts' in label or 'art' in label:
-            return 'arts'
+            return 'Arts'
         if 'commercial' in label or 'commerce' in label:
-            return 'commercial'
-        return 'general'
+            return 'Commercial'
+        if 'french' in label or 'francophone' in label:
+            return 'French Section'
+        if 'english' in label or 'anglophone' in label:
+            return 'English Section'
+        return 'General'
 
     def _generate_matricule(self):
         while True:

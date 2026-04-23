@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { useLibraryStats, useLoans, useOverdueLoans, useLowStockBooks } from "@/lib/hooks/useLibrary";
+import { useMemo, useState } from "react";
+import { useLibraryStats, useLoans, useOverdueLoans, useLowStockBooks, useBooks, useIssueBook } from "@/lib/hooks/useLibrary";
+import { useStudents } from "@/lib/hooks/useStudents";
+import { getApiErrorMessage } from "@/lib/api/errors";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,58 +17,102 @@ import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
-import { DATA_PERIODS, LIBRARIAN_CATEGORY_DATA, MOCK_BOOKS, MOCK_STUDENTS_LIST } from "./dashboard-mock-data";
 
 export function LibrarianDashboard() {
   const { toast } = useToast();
   const [isIssuingLoan, setIsIssuingLoan] = useState(false);
-  const [isProcessingLoan, setIsProcessingLoan] = useState(false);
   const [loanFormData, setLoanFormData] = useState({ studentId: "", bookId: "", duration: "7" });
 
-  const { data: libStats, isLoading: statsLoading } = useLibraryStats();
-  const { data: loansResp, isLoading: loansLoading } = useLoans({ status: 'Active' });
+  const { data: libStats } = useLibraryStats();
+  const { data: loansResp } = useLoans();
   const { data: overdueResp } = useOverdueLoans();
   const { data: lowStockResp } = useLowStockBooks();
+  const { data: booksResp } = useBooks({ limit: 100 });
+  const { data: studentsResp } = useStudents({ limit: 100 });
+  const issueBookMutation = useIssueBook();
 
-  // Real stats from API
   const totalBooks = libStats?.total_books ?? 0;
   const availableBooks = libStats?.available_books ?? 0;
   const activeLoans = libStats?.active_loans ?? 0;
-  const overdueCount = libStats?.overdue_loans ?? 0;
+  const overdueCount = libStats?.overdue_loans ?? overdueResp?.results?.length ?? 0;
 
-  // Real loan data from API
-  const recentLoans = loansResp?.results?.slice(0, 5).map(l => ({
-    student: l.borrower.name,
-    book: l.book.title,
-    due: l.due_date,
-    status: l.status,
-    avatar: l.borrower.avatar,
-    class: l.borrower.student_class ?? 'Unknown',
-  })) ?? [];
+  const allLoans = loansResp?.results ?? [];
+  const allBooks = booksResp?.results ?? [];
+  const allStudents = studentsResp?.results ?? [];
 
-  // Real low stock data from API
-  const lowStock = lowStockResp?.results?.map(b => ({
-    title: b.title,
-    author: b.author,
-    available: b.available_copies,
-    total: b.total_copies,
-  })) ?? [];
+  const recentLoans = allLoans
+    .slice()
+    .sort((a, b) => new Date(b.issued_date).getTime() - new Date(a.issued_date).getTime())
+    .slice(0, 5)
+    .map((loan) => ({
+      id: loan.id,
+      student: loan.borrower.name,
+      book: loan.book.title,
+      due: loan.due_date,
+      status: loan.status,
+      avatar: loan.borrower.avatar,
+      className: loan.borrower.student_class ?? "Unknown",
+    }));
 
-  // Category data from stats or mock
-  const categoryData = LIBRARIAN_CATEGORY_DATA;
+  const lowStock = (lowStockResp?.results ?? []).map((book) => ({
+    id: book.id,
+    title: book.title,
+    author: book.author,
+    available: book.available_copies,
+    total: book.total_copies,
+  }));
 
-  const handleIssueLoan = () => {
+  const categoryData = useMemo(() => {
+    const grouped = new Map<string, number>();
+    allBooks.forEach((book) => {
+      const key = book.category?.name || "Uncategorized";
+      grouped.set(key, (grouped.get(key) ?? 0) + 1);
+    });
+    const palette = ["#264D73", "#E8B20F", "#0F766E", "#9333EA", "#DC2626", "#2563EB"];
+    return Array.from(grouped.entries())
+      .map(([name, count], index) => ({
+        name,
+        count,
+        color: palette[index % palette.length],
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [allBooks]);
+
+  const circulationData = [
+    { name: "Available", count: availableBooks },
+    { name: "Borrowed", count: Math.max(totalBooks - availableBooks, 0) },
+    { name: "Active", count: activeLoans },
+    { name: "Overdue", count: overdueCount },
+  ];
+
+  const availableBooksForIssue = allBooks.filter((book) => book.available_copies > 0);
+
+  const handleIssueLoan = async () => {
     if (!loanFormData.studentId || !loanFormData.bookId) {
       toast({ variant: "destructive", title: "Form Incomplete", description: "Select a student and a volume." });
       return;
     }
-    setIsProcessingLoan(true);
-    setTimeout(() => {
-      setIsProcessingLoan(false);
+
+    const durationDays = Number.parseInt(loanFormData.duration, 10);
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + (Number.isNaN(durationDays) ? 7 : durationDays));
+
+    try {
+      await issueBookMutation.mutateAsync({
+        borrowerId: loanFormData.studentId,
+        bookId: loanFormData.bookId,
+        dueDate: dueDate.toISOString().split("T")[0],
+      });
       setIsIssuingLoan(false);
       setLoanFormData({ studentId: "", bookId: "", duration: "7" });
-      toast({ title: "Loan Recorded", description: "Pedagogical materials issued to student node." });
-    }, 1500);
+      toast({ title: "Loan Recorded", description: "Pedagogical materials issued successfully." });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Loan Issue Failed",
+        description: getApiErrorMessage(error, "Could not issue that book right now."),
+      });
+    }
   };
 
   return (
@@ -99,7 +145,7 @@ export function LibrarianDashboard() {
           { label: "Total Volumes", value: `${totalBooks.toLocaleString()} Items`, icon: BookMarked, color: "text-blue-600", bg: "bg-blue-50" },
           { label: "Active Loans", value: `${activeLoans} Checked Out`, icon: Clock, color: "text-purple-600", bg: "bg-purple-50" },
           { label: "Overdue Items", value: `${overdueCount} Alerts`, icon: AlertCircle, color: "text-red-600", bg: "bg-red-50" },
-          { label: "Node Capacity", value: `${availableBooks > 0 ? ((availableBooks / totalBooks) * 100).toFixed(0) : 0}% Utilized`, icon: LayoutGrid, color: "text-emerald-600", bg: "bg-emerald-50" },
+          { label: "Node Capacity", value: `${totalBooks > 0 ? ((availableBooks / totalBooks) * 100).toFixed(0) : 0}% Available`, icon: LayoutGrid, color: "text-emerald-600", bg: "bg-emerald-50" },
         ].map((stat, i) => (
           <Card key={i} className="border-none shadow-sm group hover:shadow-md transition-all">
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
@@ -120,26 +166,26 @@ export function LibrarianDashboard() {
           <CardHeader className="bg-primary/5 p-8 border-b flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <CardTitle className="text-xl font-black text-primary uppercase tracking-tighter flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-secondary"/> Circulation Velocity
+                <TrendingUp className="w-5 h-5 text-secondary" /> Circulation Snapshot
               </CardTitle>
-              <CardDescription>Aggregate borrowing trends for current session.</CardDescription>
+              <CardDescription>Current library availability and borrowing pressure from real catalog data.</CardDescription>
             </div>
             <Badge variant="outline" className="border-primary/10 text-primary font-bold h-7 px-4">REGISTRY ACTIVE</Badge>
           </CardHeader>
           <CardContent className="h-[350px] pt-10">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={DATA_PERIODS.monthly}>
+              <AreaChart data={circulationData}>
                 <defs>
                   <linearGradient id="colorLoan" x1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#264D73" stopOpacity={0.15}/>
-                    <stop offset="95%" stopColor="#264D73" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#264D73" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="#264D73" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.1} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold' }} />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: "bold" }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
-                <RechartsTooltip contentStyle={{ borderRadius: '1rem', border: 'none' }} />
-                <Area name="Loan Volume" type="monotone" dataKey="loans" stroke="#264D73" strokeWidth={4} fill="url(#colorLoan)" />
+                <RechartsTooltip contentStyle={{ borderRadius: "1rem", border: "none" }} />
+                <Area name="Items" type="monotone" dataKey="count" stroke="#264D73" strokeWidth={4} fill="url(#colorLoan)" />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
@@ -151,29 +197,35 @@ export function LibrarianDashboard() {
               <PieChart className="w-5 h-5 text-secondary" />
               Collection Density
             </CardTitle>
-            <CardDescription className="text-white/60 text-xs">Distribution by volume category.</CardDescription>
+            <CardDescription className="text-white/60 text-xs">Distribution by real catalog category.</CardDescription>
           </CardHeader>
           <CardContent className="flex-1 pt-10">
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={categoryData}>
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold' }} />
-                <YAxis hide />
-                <RechartsTooltip />
-                <Bar dataKey="count" radius={[10, 10, 0, 0]} barSize={25}>
-                  {categoryData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
+            {categoryData.length === 0 ? (
+              <div className="px-6 py-16 text-center text-sm text-muted-foreground">No categorized books have been recorded yet.</div>
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={categoryData}>
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: "bold" }} />
+                    <YAxis hide />
+                    <RechartsTooltip />
+                    <Bar dataKey="count" radius={[10, 10, 0, 0]} barSize={25}>
+                      {categoryData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+                <div className="mt-6 space-y-3">
+                  {categoryData.slice(0, 3).map((item) => (
+                    <div key={item.name} className="flex items-center justify-between p-3 rounded-xl bg-accent/20 border border-accent">
+                      <span className="text-xs font-bold text-primary uppercase">{item.name}</span>
+                      <Badge variant="outline" className="border-primary/10 text-primary font-black">{item.count}</Badge>
+                    </div>
                   ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-            <div className="mt-6 space-y-3">
-              {categoryData.slice(0, 3).map((item, i) => (
-                <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-accent/20 border border-accent">
-                  <span className="text-xs font-bold text-primary uppercase">{item.name}</span>
-                  <Badge variant="outline" className="border-primary/10 text-primary font-black">{item.count}</Badge>
                 </div>
-              ))}
-            </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -190,41 +242,45 @@ export function LibrarianDashboard() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader className="bg-accent/10 uppercase text-[9px] font-black tracking-widest">
-                <TableRow>
-                  <TableHead className="pl-8 py-4">Borrower</TableHead>
-                  <TableHead>Requested Volume</TableHead>
-                  <TableHead className="text-center">Due Date</TableHead>
-                  <TableHead className="text-right pr-8">Lifecycle</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recentLoans.map((loan, i) => (
-                  <TableRow key={i} className="hover:bg-primary/5 transition-colors border-b last:border-0 h-16">
-                    <TableCell className="pl-8">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-8 w-8 border shadow-sm">
-                          <AvatarImage src={loan.avatar} />
-                          <AvatarFallback>{loan.student.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex flex-col">
-                          <span className="font-bold text-xs md:text-sm text-primary uppercase leading-none mb-1">{loan.student}</span>
-                          <span className="text-[8px] font-black uppercase text-muted-foreground">{loan.class}</span>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-black text-primary text-xs uppercase">{loan.book}</TableCell>
-                    <TableCell className="text-center font-mono text-[10px] font-bold text-muted-foreground">{new Date(loan.due).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right pr-8">
-                      <Badge className={cn("text-[8px] font-black uppercase px-2 h-5 border-none", loan.status === 'Overdue' ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700")}>
-                        {loan.status}
-                      </Badge>
-                    </TableCell>
+            {recentLoans.length === 0 ? (
+              <div className="p-8 text-center text-sm text-muted-foreground">No book loans have been recorded yet.</div>
+            ) : (
+              <Table>
+                <TableHeader className="bg-accent/10 uppercase text-[9px] font-black tracking-widest">
+                  <TableRow>
+                    <TableHead className="pl-8 py-4">Borrower</TableHead>
+                    <TableHead>Requested Volume</TableHead>
+                    <TableHead className="text-center">Due Date</TableHead>
+                    <TableHead className="text-right pr-8">Lifecycle</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {recentLoans.map((loan) => (
+                    <TableRow key={loan.id} className="hover:bg-primary/5 transition-colors border-b last:border-0 h-16">
+                      <TableCell className="pl-8">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-8 w-8 border shadow-sm">
+                            <AvatarImage src={loan.avatar} />
+                            <AvatarFallback>{loan.student.charAt(0)}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex flex-col">
+                            <span className="font-bold text-xs md:text-sm text-primary uppercase leading-none mb-1">{loan.student}</span>
+                            <span className="text-[8px] font-black uppercase text-muted-foreground">{loan.className}</span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-black text-primary text-xs uppercase">{loan.book}</TableCell>
+                      <TableCell className="text-center font-mono text-[10px] font-bold text-muted-foreground">{new Date(loan.due).toLocaleDateString()}</TableCell>
+                      <TableCell className="text-right pr-8">
+                        <Badge className={cn("text-[8px] font-black uppercase px-2 h-5 border-none", loan.status === "Overdue" ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700")}>
+                          {loan.status}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
 
@@ -237,28 +293,32 @@ export function LibrarianDashboard() {
             <CardDescription>Critical stock levels for high-demand curriculum.</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
-            <Table>
-              <TableBody>
-                {lowStock.map((item, i) => (
-                  <TableRow key={i} className="hover:bg-primary/5 border-b last:border-0 h-16">
-                    <TableCell className="pl-8">
-                      <div className="space-y-0.5">
-                        <p className="text-[11px] font-black text-primary uppercase leading-none">{item.title}</p>
-                        <p className="text-[9px] font-bold text-muted-foreground uppercase">By {item.author}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right pr-8">
-                      <div className="flex flex-col items-end">
-                        <span className={cn("text-sm font-black", item.available === 0 ? "text-red-600" : "text-primary")}>
-                          {item.available} <span className="text-[10px] opacity-40">/ {item.total}</span>
-                        </span>
-                        <span className="text-[8px] font-bold uppercase opacity-40">Stock Level</span>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            {lowStock.length === 0 ? (
+              <div className="p-8 text-center text-sm text-muted-foreground">No low-stock alerts at the moment.</div>
+            ) : (
+              <Table>
+                <TableBody>
+                  {lowStock.map((item) => (
+                    <TableRow key={item.id} className="hover:bg-primary/5 border-b last:border-0 h-16">
+                      <TableCell className="pl-8">
+                        <div className="space-y-0.5">
+                          <p className="text-[11px] font-black text-primary uppercase leading-none">{item.title}</p>
+                          <p className="text-[9px] font-bold text-muted-foreground uppercase">By {item.author}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right pr-8">
+                        <div className="flex flex-col items-end">
+                          <span className={cn("text-sm font-black", item.available === 0 ? "text-red-600" : "text-primary")}>
+                            {item.available} <span className="text-[10px] opacity-40">/ {item.total}</span>
+                          </span>
+                          <span className="text-[8px] font-bold uppercase opacity-40">Stock Level</span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
           <CardFooter className="bg-accent/10 p-4 flex justify-center border-t">
             <div className="flex items-center gap-2 text-muted-foreground italic">
@@ -289,28 +349,45 @@ export function LibrarianDashboard() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Select Student (Matricule)</Label>
-                <Select value={loanFormData.studentId} onValueChange={(v) => setLoanFormData({...loanFormData, studentId: v})}>
-                  <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl font-bold"><SelectValue placeholder="Choose Borrower..." /></SelectTrigger>
+                <Select value={loanFormData.studentId} onValueChange={(value) => setLoanFormData({ ...loanFormData, studentId: value })}>
+                  <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl font-bold">
+                    <SelectValue placeholder="Choose Borrower..." />
+                  </SelectTrigger>
                   <SelectContent>
-                    {MOCK_STUDENTS_LIST.map(s => <SelectItem key={s.id} value={s.id}>{s.name} ({s.id})</SelectItem>)}
+                    {allStudents.map((student) => (
+                      <SelectItem key={student.id} value={student.id}>
+                        {student.user?.name} ({student.user?.matricule || student.id})
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Select Volume</Label>
-                <Select value={loanFormData.bookId} onValueChange={(v) => setLoanFormData({...loanFormData, bookId: v})}>
-                  <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl font-bold"><SelectValue placeholder="Choose Book..." /></SelectTrigger>
+                <Select value={loanFormData.bookId} onValueChange={(value) => setLoanFormData({ ...loanFormData, bookId: value })}>
+                  <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl font-bold">
+                    <SelectValue placeholder="Choose Book..." />
+                  </SelectTrigger>
                   <SelectContent>
-                    {MOCK_BOOKS.map(b => <SelectItem key={b.id} value={b.id}>{b.title}</SelectItem>)}
+                    {availableBooksForIssue.map((book) => (
+                      <SelectItem key={book.id} value={book.id}>
+                        {book.title} ({book.available_copies} available)
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Standard Duration</Label>
                 <div className="flex gap-2">
-                  {["7", "14", "21"].map(d => (
-                    <Button key={d} variant={loanFormData.duration === d ? "default" : "outline"} className={cn("flex-1 h-11 rounded-xl font-black", loanFormData.duration === d ? "bg-primary text-white" : "border-primary/10")} onClick={() => setLoanFormData({...loanFormData, duration: d})}>
-                      {d} Days
+                  {["7", "14", "21"].map((duration) => (
+                    <Button
+                      key={duration}
+                      variant={loanFormData.duration === duration ? "default" : "outline"}
+                      className={cn("flex-1 h-11 rounded-xl font-black", loanFormData.duration === duration ? "bg-primary text-white" : "border-primary/10")}
+                      onClick={() => setLoanFormData({ ...loanFormData, duration })}
+                    >
+                      {duration} Days
                     </Button>
                   ))}
                 </div>
@@ -318,8 +395,8 @@ export function LibrarianDashboard() {
             </div>
           </div>
           <DialogFooter className="bg-accent/20 p-6 border-t border-accent">
-            <Button className="w-full h-14 rounded-2xl shadow-xl font-black uppercase tracking-widest text-xs gap-3" onClick={handleIssueLoan} disabled={isProcessingLoan}>
-              {isProcessingLoan ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-5 h-5 text-secondary" />}
+            <Button className="w-full h-14 rounded-2xl shadow-xl font-black uppercase tracking-widest text-xs gap-3" onClick={handleIssueLoan} disabled={issueBookMutation.isPending}>
+              {issueBookMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-5 h-5 text-secondary" />}
               Authorize Loan Issue
             </Button>
           </DialogFooter>

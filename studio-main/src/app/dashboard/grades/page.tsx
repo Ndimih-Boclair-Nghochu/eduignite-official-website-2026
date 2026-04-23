@@ -52,10 +52,20 @@ import { useRouter } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { gradesService } from "@/lib/api/services/grades.service";
 import { studentsService } from "@/lib/api/services/students.service";
+import { useSchoolSettings } from "@/lib/hooks/useSchools";
 
-const CLASSES = ["6ème / Form 1", "5ème / Form 2", "4ème / Form 3", "3ème / Form 4", "2nde / Form 5", "1ère / Lower Sixth", "Terminale / Upper Sixth"];
 const ACADEMIC_YEARS = ["2023 / 2024", "2022 / 2023", "2021 / 2022"];
 const TERMS = ["Term 1", "Term 2", "Term 3"];
+
+function parseSubjectPlacement(level?: string) {
+  const raw = (level || "").trim();
+  if (!raw) return [];
+  if (!raw.includes("||")) {
+    return raw.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+  const [, classes] = raw.split("||");
+  return (classes || "").split(",").map((item) => item.trim()).filter(Boolean);
+}
 
 export default function GradeBookPage() {
   const { user } = useAuth();
@@ -80,10 +90,33 @@ export default function GradeBookPage() {
   const [classResults, setClassResults] = useState<any[]>([]);
   const [annualResults, setAnnualResults] = useState<any[]>([]);
   const [studentProfile, setStudentProfile] = useState<any>(null);
+  const [teacherClassStudents, setTeacherClassStudents] = useState<any[]>([]);
+  const [existingGradeMap, setExistingGradeMap] = useState<Record<string, any>>({});
+  const [gradeDrafts, setGradeDrafts] = useState<Record<string, string>>({});
+  const [savingGradeFor, setSavingGradeFor] = useState<string | null>(null);
 
   const isTeacher = user?.role === "TEACHER";
   const isStudent = user?.role === "STUDENT";
   const isAdmin = user?.role === "SCHOOL_ADMIN" || user?.role === "SUB_ADMIN";
+  const { data: schoolSettings } = useSchoolSettings(user?.school?.id || "");
+
+  const teacherSubjects = useMemo(() => {
+    if (!isTeacher) return subjects;
+    return subjects.filter((subject: any) => subject.teacher === user?.id || subject.teacher === user?.uid);
+  }, [isTeacher, subjects, user?.id, user?.uid]);
+
+  const availableClasses = useMemo(() => {
+    const sourceSubjects = isTeacher ? teacherSubjects : subjects;
+    const subjectClasses = sourceSubjects.flatMap((subject: any) => parseSubjectPlacement(subject.level));
+    const schoolClasses = schoolSettings?.class_levels || [];
+    return Array.from(new Set([...subjectClasses, ...schoolClasses].filter(Boolean)));
+  }, [isTeacher, schoolSettings?.class_levels, subjects, teacherSubjects]);
+
+  const availableTeacherClasses = useMemo(() => {
+    const selected = teacherSubjects.find((subject: any) => subject.id === selectedSubject);
+    const scopedClasses = parseSubjectPlacement(selected?.level);
+    return scopedClasses.length ? scopedClasses : availableClasses;
+  }, [availableClasses, selectedSubject, teacherSubjects]);
 
   // Load subjects
   useEffect(() => {
@@ -92,9 +125,6 @@ export default function GradeBookPage() {
         const data = await gradesService.getSubjects({ limit: 200 });
         const list = Array.isArray(data) ? data : data?.results || [];
         setSubjects(list);
-        if (list.length > 0) {
-          setSelectedSubject(list[0].id);
-        }
       } catch (error) {
         console.error("Error loading subjects:", error);
         setHasError(true);
@@ -104,6 +134,20 @@ export default function GradeBookPage() {
 
     loadSubjects();
   }, [toast]);
+
+  useEffect(() => {
+    const subjectPool = isTeacher ? teacherSubjects : subjects;
+    if (!subjectPool.length) return;
+    setSelectedSubject((current) => (
+      current && subjectPool.some((subject: any) => subject.id === current) ? current : subjectPool[0].id
+    ));
+  }, [isTeacher, subjects, teacherSubjects]);
+
+  useEffect(() => {
+    const classPool = isTeacher ? availableTeacherClasses : availableClasses;
+    if (!classPool.length) return;
+    setSelectedClass((current) => (current && classPool.includes(current) ? current : classPool[0]));
+  }, [availableClasses, availableTeacherClasses, isTeacher]);
 
   // Load sequences
   useEffect(() => {
@@ -174,6 +218,63 @@ export default function GradeBookPage() {
     loadClassResults();
   }, [isTeacher, selectedClass, selectedSequence, toast]);
 
+  useEffect(() => {
+    if (!isTeacher || !selectedClass || !selectedSequence || !selectedSubject) {
+      setTeacherClassStudents([]);
+      setExistingGradeMap({});
+      setGradeDrafts({});
+      return;
+    }
+
+    const loadTeacherGradeSheet = async () => {
+      try {
+        const studentData = await studentsService.getClassList(selectedClass);
+        const studentList = Array.isArray(studentData) ? studentData : studentData?.results || [];
+        setTeacherClassStudents(studentList);
+
+        const reportCards = await Promise.all(
+          studentList.map(async (student: any) => {
+            try {
+              const report = await gradesService.getReportCard(student.id, selectedSequence);
+              return { studentId: student.id, report };
+            } catch (error) {
+              return { studentId: student.id, report: null };
+            }
+          })
+        );
+
+        const nextGradeMap: Record<string, any> = {};
+        reportCards.forEach(({ studentId, report }) => {
+          const gradeEntries = report?.grades || report?.subjects || [];
+          const matched = gradeEntries.find((grade: any) =>
+            grade?.subject === selectedSubject ||
+            grade?.subject?.id === selectedSubject ||
+            grade?.subject_id === selectedSubject
+          );
+          if (matched) {
+            nextGradeMap[studentId] = matched;
+          }
+        });
+
+        setExistingGradeMap(nextGradeMap);
+        setGradeDrafts(
+          studentList.reduce((acc: Record<string, string>, student: any) => {
+            const existing = nextGradeMap[student.id];
+            acc[student.id] = existing?.score !== undefined && existing?.score !== null ? String(existing.score) : "";
+            return acc;
+          }, {})
+        );
+      } catch (error) {
+        console.error("Error loading teacher grade sheet:", error);
+        setTeacherClassStudents([]);
+        setExistingGradeMap({});
+        setGradeDrafts({});
+      }
+    };
+
+    loadTeacherGradeSheet();
+  }, [isTeacher, selectedClass, selectedSequence, selectedSubject]);
+
   // Load admin view classes
   useEffect(() => {
     if (!isAdmin) return;
@@ -230,6 +331,66 @@ export default function GradeBookPage() {
     if (average >= 12) return "Good Progress";
     if (average >= 10) return "Fair Effort";
     return "Needs Improvement";
+  };
+
+  const refreshTeacherClassResults = async () => {
+    if (!selectedClass || !selectedSequence) return;
+    try {
+      const data = await gradesService.getClassResults(selectedClass, selectedSequence);
+      setClassResults(Array.isArray(data) ? data : data?.results || []);
+    } catch (error) {
+      console.error("Error refreshing class results:", error);
+    }
+  };
+
+  const handleSaveGrade = async (studentId: string) => {
+    const rawValue = gradeDrafts[studentId];
+    const score = Number(rawValue);
+
+    if (!selectedSubject || !selectedSequence) {
+      toast({ title: "Missing selection", description: "Choose the subject and sequence first.", variant: "destructive" });
+      return;
+    }
+
+    if (rawValue === undefined || rawValue === "" || Number.isNaN(score) || score < 0 || score > 20) {
+      toast({ title: "Invalid grade", description: "Enter a score between 0 and 20.", variant: "destructive" });
+      return;
+    }
+
+    setSavingGradeFor(studentId);
+    try {
+      const existingGrade = existingGradeMap[studentId];
+      const payload = {
+        student: studentId,
+        subject: selectedSubject,
+        sequence: selectedSequence,
+        score,
+      };
+
+      const savedGrade = existingGrade?.id
+        ? await gradesService.updateGrade(existingGrade.id, payload)
+        : await gradesService.createGrade(payload);
+
+      setExistingGradeMap((current) => ({
+        ...current,
+        [studentId]: savedGrade,
+      }));
+      setGradeDrafts((current) => ({
+        ...current,
+        [studentId]: String(savedGrade.score ?? score),
+      }));
+      await refreshTeacherClassResults();
+      toast({ title: "Grade saved", description: "The student's mark has been recorded successfully." });
+    } catch (error: any) {
+      console.error("Error saving grade:", error);
+      toast({
+        title: "Failed to save grade",
+        description: error?.response?.data?.detail || error?.response?.data?.non_field_errors?.[0] || "Could not save this mark right now.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingGradeFor(null);
+    }
   };
 
   const handleRetry = () => {
@@ -458,7 +619,7 @@ export default function GradeBookPage() {
                     <SelectValue placeholder="Choose subject..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {subjects.map((s) => (
+                    {(isTeacher ? teacherSubjects : subjects).map((s) => (
                       <SelectItem key={s.id} value={s.id}>
                         {s.name}
                       </SelectItem>
@@ -474,7 +635,7 @@ export default function GradeBookPage() {
                     <SelectValue placeholder="Choose class..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {CLASSES.map((cls) => (
+                    {(isTeacher ? availableTeacherClasses : availableClasses).map((cls) => (
                       <SelectItem key={cls} value={cls}>
                         {cls}
                       </SelectItem>
@@ -516,23 +677,37 @@ export default function GradeBookPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {classResults.length === 0 ? (
+                      {teacherClassStudents.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
                             No students in this class for the selected subject
                           </TableCell>
                         </TableRow>
                       ) : (
-                        classResults.map((result: any) => (
-                          <TableRow key={result.studentId}>
-                            <TableCell className="font-bold">{result.studentName}</TableCell>
-                            <TableCell>{result.currentGrade || "Not set"}</TableCell>
+                        teacherClassStudents.map((student: any) => (
+                          <TableRow key={student.id}>
+                            <TableCell className="font-bold">{student.user?.name || student.student_name || "Student"}</TableCell>
+                            <TableCell>{existingGradeMap[student.id]?.score ?? "Not set"}</TableCell>
                             <TableCell>
-                              <Input type="number" placeholder="Enter grade" className="w-20 h-8 rounded-lg" max="20" />
+                              <Input
+                                type="number"
+                                placeholder="Enter grade"
+                                className="w-20 h-8 rounded-lg"
+                                max="20"
+                                min="0"
+                                value={gradeDrafts[student.id] ?? ""}
+                                onChange={(e) => setGradeDrafts((current) => ({ ...current, [student.id]: e.target.value }))}
+                              />
                             </TableCell>
                             <TableCell>
-                              <Button size="sm" variant="outline" className="text-xs">
-                                Save
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs"
+                                onClick={() => handleSaveGrade(student.id)}
+                                disabled={savingGradeFor === student.id}
+                              >
+                                {savingGradeFor === student.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
                               </Button>
                             </TableCell>
                           </TableRow>
@@ -556,22 +731,26 @@ export default function GradeBookPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Student</TableHead>
-                        <TableHead>Mark</TableHead>
+                        <TableHead>Average</TableHead>
+                        <TableHead>Rank</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Remark</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {classResults.map((result: any) => (
-                        <TableRow key={result.studentId}>
-                          <TableCell className="font-bold">{result.studentName}</TableCell>
-                          <TableCell className="font-bold text-primary">{result.mark?.toFixed(2) || "N/A"}</TableCell>
+                        <TableRow key={result.admission_number || result.student_name}>
+                          <TableCell className="font-bold">{result.student_name || result.studentName}</TableCell>
+                          <TableCell className="font-bold text-primary">
+                            {typeof result.average === "number" ? result.average.toFixed(2) : "N/A"}
+                          </TableCell>
+                          <TableCell>{result.rank || "N/A"}</TableCell>
                           <TableCell>
-                            <Badge className={cn(result.status === "PASSED" ? "bg-green-600" : "bg-destructive")}>
-                              {result.status || "N/A"}
+                            <Badge className={cn((result.average || 0) >= 10 ? "bg-green-600" : "bg-destructive")}>
+                              {getSystemStatus(result.average || 0)}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-sm">{result.remark || "N/A"}</TableCell>
+                          <TableCell className="text-sm">{getSystemRemark(result.average || 0)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

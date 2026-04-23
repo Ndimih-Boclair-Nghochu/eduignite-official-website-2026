@@ -93,6 +93,16 @@ export default function AcademicRewardsPage() {
     return MOCK_STUDENTS;
   }, [honourRollData]);
 
+  const availableSections = useMemo(
+    () => Array.from(new Set(studentList.map((student: any) => student.section).filter(Boolean))).sort(),
+    [studentList]
+  );
+
+  const availableClasses = useMemo(
+    () => Array.from(new Set(studentList.map((student: any) => student.class).filter(Boolean))).sort(),
+    [studentList]
+  );
+
   const eligibleStudents = useMemo(() => {
     return studentList.filter((s: any) => {
       const matchesThreshold = s.average >= threshold;
@@ -450,11 +460,11 @@ export default function AcademicRewardsPage() {
            <div className="flex gap-2 w-full md:w-auto">
               <Select value={sectionFilter} onValueChange={setSectionFilter}>
                 <SelectTrigger className="w-[180px] h-11 bg-white border-none rounded-xl font-bold text-xs"><SelectValue placeholder="All Sections" /></SelectTrigger>
-                <SelectContent>{SECTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                <SelectContent>{availableSections.map((section) => <SelectItem key={section} value={section}>{section}</SelectItem>)}</SelectContent>
               </Select>
               <Select value={classFilter} onValueChange={setClassFilter}>
                 <SelectTrigger className="w-[180px] h-11 bg-white border-none rounded-xl font-bold text-xs"><SelectValue placeholder="All Classes" /></SelectTrigger>
-                <SelectContent>{CLASSES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                <SelectContent>{availableClasses.map((className) => <SelectItem key={className} value={className}>{className}</SelectItem>)}</SelectContent>
               </Select>
            </div>
         </div>

@@ -4,10 +4,7 @@ import {
   useQueryClient,
   useInfiniteQuery,
 } from '@tanstack/react-query';
-import { useCallback, useRef, useState, useEffect } from 'react';
 import { chatService } from '@/lib/api/services/chat.service';
-import { BASE_URL } from '@/lib/api/client';
-import { getAccessToken } from '@/lib/auth';
 import type {
   Conversation,
   Message,
@@ -26,6 +23,18 @@ const chatKeys = {
   messages: (convId: string) =>
     [...chatKeys.all, 'messages', convId] as const,
 };
+
+function getNextCursor(page: any): string | undefined {
+  if (page?.next_cursor) return page.next_cursor;
+  if (!page?.next) return undefined;
+  try {
+    const url = new URL(page.next);
+    return url.searchParams.get('cursor') || undefined;
+  } catch {
+    const match = String(page.next).match(/[?&]cursor=([^&]+)/);
+    return match ? decodeURIComponent(match[1]) : undefined;
+  }
+}
 
 /**
  * Hook for fetching conversations
@@ -63,7 +72,7 @@ export function useMessages(
         ...params,
         cursor: pageParam,
       }),
-    getNextPageParam: (lastPage) => lastPage.next_cursor || undefined,
+    getNextPageParam: (lastPage) => getNextCursor(lastPage),
     enabled: !!convId,
   });
 }
@@ -154,83 +163,4 @@ export function useDeleteMessage() {
       queryClient.invalidateQueries({ queryKey: chatKeys.all });
     },
   });
-}
-
-/**
- * WebSocket hook for real-time chat messages
- * Manages WebSocket connection for a specific conversation
- */
-export function useChatWebSocket(
-  conversationId: string | null,
-  onMessage: (msg: any) => void
-) {
-  const wsRef = useRef<WebSocket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const token = getAccessToken();
-
-  useEffect(() => {
-    if (!conversationId || !token) return;
-
-    let wsBase = process.env.NEXT_PUBLIC_WS_URL;
-    if (!wsBase) {
-      try {
-        const apiUrl = new URL(BASE_URL);
-        apiUrl.protocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:';
-        apiUrl.pathname = '';
-        apiUrl.search = '';
-        apiUrl.hash = '';
-        wsBase = apiUrl.toString().replace(/\/$/, '');
-      } catch {
-        wsBase = 'ws://localhost:8000';
-      }
-    }
-
-    const wsUrl = `${wsBase}/ws/chat/${conversationId}/?token=${token}`;
-
-    try {
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        setIsConnected(true);
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          onMessage(data?.data ?? data?.message ?? data);
-        } catch (error) {
-          console.error('Failed to parse WebSocket message:', error);
-        }
-      };
-
-      ws.onclose = () => {
-        setIsConnected(false);
-      };
-
-      ws.onerror = (err) => {
-        console.error('WebSocket error:', err);
-      };
-
-      return () => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.close();
-        }
-      };
-    } catch (error) {
-      console.error('Failed to create WebSocket:', error);
-    }
-  }, [conversationId, token]);
-
-  const sendWsMessage = useCallback((data: Record<string, any>) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      try {
-        wsRef.current.send(JSON.stringify(data));
-      } catch (error) {
-        console.error('Failed to send WebSocket message:', error);
-      }
-    }
-  }, []);
-
-  return { isConnected, sendWsMessage };
 }

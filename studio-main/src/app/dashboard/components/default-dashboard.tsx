@@ -46,7 +46,7 @@ export function DefaultDashboard() {
         {[
           { label: "Role Registry", value: user?.role?.replace('_', ' ') || "", icon: ShieldCheck, color: "text-blue-600" },
           { label: "License Status", value: licenseState.statusLabel, icon: Wallet, color: "text-green-600" },
-          { label: "Matricule", value: user?.id || "", icon: GraduationCap, color: "text-purple-600" },
+          { label: "Matricule", value: user?.matricule || user?.id || "", icon: GraduationCap, color: "text-purple-600" },
           { label: "AI Requests", value: user?.aiRequestCount || 0, icon: Activity, color: "text-amber-600" },
         ].map((stat, i) => (
           <Card key={i} className="border-none shadow-sm group hover:shadow-md transition-all">

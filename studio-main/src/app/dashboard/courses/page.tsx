@@ -3,8 +3,9 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { useSubjects } from "@/lib/hooks/useGrades";
+import { useCreateSubject, useDeleteSubject, useSubjects } from "@/lib/hooks/useGrades";
 import { useUsers } from "@/lib/hooks/useUsers";
+import { useSchoolSettings } from "@/lib/hooks/useSchools";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -66,6 +67,27 @@ const INITIAL_COURSES: any[] = [];
 
 const INITIAL_MATERIALS: any[] = [];
 
+function encodeSubjectPlacement(section: string, targetClasses: string[]) {
+  return `${section}||${targetClasses.join(", ")}`;
+}
+
+function parseSubjectPlacement(level?: string) {
+  const raw = (level || "").trim();
+  if (!raw) {
+    return { section: "General", targetClass: "All Classes", targetClasses: [] as string[] };
+  }
+  if (!raw.includes("||")) {
+    return { section: "General", targetClass: raw, targetClasses: raw.split(",").map((item) => item.trim()).filter(Boolean) };
+  }
+  const [section, classes] = raw.split("||");
+  const targetClasses = (classes || "").split(",").map((item) => item.trim()).filter(Boolean);
+  return {
+    section: section?.trim() || "General",
+    targetClass: targetClasses.join(", ") || "All Classes",
+    targetClasses,
+  };
+}
+
 export default function CoursesPage() {
   const { user, platformSettings } = useAuth();
   const { t, language } = useI18n();
@@ -99,10 +121,11 @@ export default function CoursesPage() {
   const [newSubject, setNewSubject] = useState({
     name: "",
     id: "",
+    instructorId: "",
     instructorName: "",
     instructorAvatar: "",
     targetClasses: [] as string[],
-    section: "Anglophone Section",
+    section: "General",
     type: "mandatory",
     coefficient: 1,
     color: "bg-blue-500"
@@ -113,21 +136,45 @@ export default function CoursesPage() {
   const isSubAdmin = user?.role === "SUB_ADMIN";
   const isAdmin = isSchoolAdmin || isSubAdmin;
   const isStudent = user?.role === "STUDENT";
+  const { data: schoolSettings } = useSchoolSettings(user?.school?.id || "");
 
   // Fetch subjects from API
   const { data: subjectsData, isLoading: subjectsLoading } = useSubjects();
   const { data: teachersData } = useUsers({ role: 'TEACHER' });
+  const createSubjectMutation = useCreateSubject();
+  const deleteSubjectMutation = useDeleteSubject();
+
+  const availableSections = useMemo(
+    () => schoolSettings?.sections?.filter(Boolean)?.length ? schoolSettings.sections : SECTIONS,
+    [schoolSettings]
+  );
+
+  const availableClasses = useMemo(
+    () => schoolSettings?.class_levels?.filter(Boolean)?.length ? schoolSettings.class_levels : Array.from(new Set(Object.values(SECTION_CLASSES).flat())),
+    [schoolSettings]
+  );
+
+  useEffect(() => {
+    setNewSubject((current) => {
+      if (availableSections.includes(current.section)) {
+        return current;
+      }
+      return { ...current, section: availableSections[0] || "General", targetClasses: [] };
+    });
+  }, [availableSections]);
 
   useEffect(() => {
     if (subjectsData?.results) {
       // Map API subjects to the course format used by this page
       const mapped = subjectsData.results.map((s: any) => ({
-        id: s.code || s.id,
+        ...parseSubjectPlacement(s.level),
+        id: s.id,
+        code: s.code || s.id,
+        subjectId: s.id,
         name: s.name,
-        instructorName: s.teacher || "Unassigned",
+        instructorId: s.teacher || "",
+        instructorName: s.teacher_name || "Unassigned",
         instructorAvatar: `https://picsum.photos/seed/${s.code || s.id}/200/200`,
-        targetClass: s.level || "All Classes",
-        section: "All Sections",
         type: s.coefficient >= 4 ? "mandatory" : "optional",
         coefficient: s.coefficient || 1,
         color: ["bg-blue-500","bg-emerald-500","bg-purple-500","bg-rose-500","bg-amber-500"][
@@ -143,7 +190,7 @@ export default function CoursesPage() {
   }, [subjectsData, subjectsLoading]);
 
   const handleCreateSubject = async () => {
-    if (!newSubject.name || !newSubject.id || !newSubject.instructorName || newSubject.targetClasses.length === 0) {
+    if (!newSubject.name || !newSubject.id || !newSubject.instructorId || newSubject.targetClasses.length === 0) {
       toast({ 
         variant: "destructive", 
         title: "Incomplete Form", 
@@ -152,27 +199,38 @@ export default function CoursesPage() {
       return;
     }
     setIsProcessing(true);
-    setTimeout(() => {
-      setSubjects([...subjects, { 
-        ...newSubject, 
-        targetClass: newSubject.targetClasses.join(', '),
-        stats: { exams: 0, attendance: 0, liveScheduled: 0, liveCompleted: 0, liveCancelled: 0 } 
-      }]);
+    try {
+      await createSubjectMutation.mutateAsync({
+        code: newSubject.id,
+        coefficient: newSubject.coefficient,
+        is_active: true,
+        level: encodeSubjectPlacement(newSubject.section, newSubject.targetClasses),
+        name: newSubject.name,
+        teacher: newSubject.instructorId,
+      });
       setIsProcessing(false);
       setIsAddingSubject(false);
       setNewSubject({ 
         name: "", 
         id: "", 
+        instructorId: "",
         instructorName: "", 
         instructorAvatar: "",
         targetClasses: [], 
-        section: "Anglophone Section", 
+        section: availableSections[0] || "General", 
         type: "mandatory", 
         coefficient: 1,
         color: "bg-blue-500" 
       });
       toast({ title: "Subject Registered", description: `${newSubject.name} added to curriculum.` });
-    }, 800);
+    } catch (error: any) {
+      setIsProcessing(false);
+      toast({
+        variant: "destructive",
+        title: "Subject creation failed",
+        description: error?.response?.data?.detail || error?.response?.data?.code?.[0] || "Could not save this subject assignment.",
+      });
+    }
   };
 
   const handleEnrollOptional = (subjectId: string) => {
@@ -186,8 +244,16 @@ export default function CoursesPage() {
   };
 
   const handleDeleteSubject = async (id: string) => {
-    setSubjects(subjects.filter(s => s.id !== id));
-    toast({ title: "Removed", description: "Subject removed from curriculum." });
+    try {
+      await deleteSubjectMutation.mutateAsync(id);
+      toast({ title: "Removed", description: "Subject removed from curriculum." });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Delete failed",
+        description: error?.response?.data?.detail || "Could not remove this subject right now.",
+      });
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type?: 'logo' | 'banner') => {
@@ -266,10 +332,7 @@ export default function CoursesPage() {
 
   const visibleSubjects = useMemo(() => {
     if (isSchoolAdmin) return subjects;
-    if (isSubAdmin) {
-      const subAdminSection = "Anglophone Section";
-      return subjects.filter(s => s.section === subAdminSection);
-    }
+    if (isSubAdmin) return subjects;
     return subjects;
   }, [subjects, isSchoolAdmin, isSubAdmin]);
 
@@ -752,16 +815,21 @@ export default function CoursesPage() {
                   </div>
                   <div className="space-y-2">
                     <Label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Assigned Teacher</Label>
-                    <Select value={newSubject.instructorName} onValueChange={(v) => {
-                      const teacher = MOCK_TEACHERS.find(t => t.name === v);
-                      setNewSubject({...newSubject, instructorName: v, instructorAvatar: teacher?.avatar || ""})
+                    <Select value={newSubject.instructorId} onValueChange={(value) => {
+                      const teacher = (teachersData?.results || MOCK_TEACHERS).find((item: any) => (item.id || item.user?.id) === value);
+                      setNewSubject({
+                        ...newSubject,
+                        instructorId: value,
+                        instructorName: teacher?.name || teacher?.user?.name || "",
+                        instructorAvatar: teacher?.avatar || teacher?.user?.avatar || "",
+                      })
                     }}>
                       <SelectTrigger className="h-11 bg-accent/30 border-none rounded-xl font-bold">
                         <SelectValue placeholder="Select Instructor" />
                       </SelectTrigger>
                       <SelectContent>
                         {(teachersData?.results || MOCK_TEACHERS).map((t: any) => (
-                          <SelectItem key={t.name || t.user?.name} value={t.name || t.user?.name}>{t.name || t.user?.name}</SelectItem>
+                          <SelectItem key={t.id || t.user?.id} value={t.id || t.user?.id}>{t.name || t.user?.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -781,7 +849,7 @@ export default function CoursesPage() {
                     <Select value={newSubject.section} onValueChange={(v) => setNewSubject({...newSubject, section: v, targetClasses: []})}>
                       <SelectTrigger className="h-11 bg-accent/30 border-none rounded-xl font-bold"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {SECTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                        {availableSections.map((section) => <SelectItem key={section} value={section}>{section}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -789,7 +857,7 @@ export default function CoursesPage() {
                   <div className="col-span-2 space-y-3">
                     <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest ml-1">Target Classes (Select All That Apply)</Label>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-4 bg-accent/20 rounded-2xl border border-accent/50 max-h-[200px] overflow-y-auto">
-                      {SECTION_CLASSES[newSubject.section]?.map((cls) => (
+                      {availableClasses.map((cls) => (
                         <div key={cls} className="flex items-center space-x-2">
                           <Checkbox 
                             id={`cls-${cls}`} 
@@ -866,7 +934,7 @@ export default function CoursesPage() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {mandatorySubjects.map((course) => (
-                <CourseCard key={course.id} course={course} isAdmin={isAdmin} onDelete={() => handleDeleteSubject(course.id)} onViewMaterials={() => setViewingMaterialsFor(course)} />
+                <CourseCard key={course.subjectId || course.id} course={course} isAdmin={isAdmin} onDelete={() => handleDeleteSubject(course.subjectId || course.id)} onViewMaterials={() => setViewingMaterialsFor(course)} />
               ))}
             </div>
           </section>
@@ -880,7 +948,7 @@ export default function CoursesPage() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {enrolledOptional.map((course) => (
-                  <CourseCard key={course.id} course={course} isAdmin={isAdmin} onDelete={() => handleDeleteSubject(course.id)} onViewMaterials={() => setViewingMaterialsFor(course)} />
+                  <CourseCard key={course.subjectId || course.id} course={course} isAdmin={isAdmin} onDelete={() => handleDeleteSubject(course.subjectId || course.id)} onViewMaterials={() => setViewingMaterialsFor(course)} />
                 ))}
               </div>
             </section>
@@ -901,7 +969,7 @@ function CourseCard({ course, isAdmin, onDelete, onViewMaterials }: { course: an
         <div className="flex justify-between items-start">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-[10px] font-bold">{course.id}</Badge>
+              <Badge variant="outline" className="text-[10px] font-bold">{course.code || course.id}</Badge>
               <Badge className={cn(
                 "text-[9px] uppercase font-black border-none h-4 px-2",
                 course.type === 'mandatory' ? "bg-primary text-white" : "bg-secondary text-primary"

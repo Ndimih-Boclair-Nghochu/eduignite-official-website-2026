@@ -35,14 +35,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
 
 const CLASSES = ["6ème / Form 1", "5ème / Form 2", "4ème / Form 3", "3ème / Form 4", "2nde / Form 5", "1ère / Lower Sixth", "Terminale / Upper Sixth"];
 const SECTIONS = ["Anglophone Section", "Francophone Section", "Technical Section"];
 
 const MOCK_STUDENTS: any[] = [];
-
-const MOCK_TRANSCRIPT_DATA: Record<string, any> = {};
 
 export default function TranscriptsPage() {
   const { user, platformSettings } = useAuth();
@@ -59,11 +56,13 @@ export default function TranscriptsPage() {
   // Fetch real data from backend
   const { data: studentsData, isLoading: studentsLoading } = useStudents({ search: searchTerm || undefined });
   const { data: annualResultsData } = useAnnualResults();
+  const { data: gradesData } = useGrades({ limit: 500 });
 
   // Map API students to the shape used by this page
   const apiStudents = useMemo(() => {
     if (!studentsData?.results) return null;
     return studentsData.results.map((s: any) => ({
+      recordId: s.id,
       id: s.admission_number || s.user?.matricule || s.id,
       name: s.user?.name || 'Unknown',
       class: s.student_class || 'Unknown',
@@ -74,6 +73,46 @@ export default function TranscriptsPage() {
   }, [studentsData]);
 
   const studentList = apiStudents || MOCK_STUDENTS;
+
+  const gradeRowsByStudent = useMemo(() => {
+    const rows = (gradesData?.results || []).reduce((acc: Record<string, any[]>, grade: any) => {
+      const studentId = typeof grade.student === "string" ? grade.student : grade.student?.id;
+      if (!studentId) return acc;
+      if (!acc[studentId]) acc[studentId] = [];
+
+      acc[studentId].push({
+        id: grade.id,
+        subject: grade.subject?.name || grade.subject_name || "Subject",
+        subjectCode: grade.subject?.code || grade.subject_code || "",
+        sequence: grade.sequence?.name || grade.sequence_name || "Sequence",
+        score: grade.score,
+        teacher: grade.teacher_name || grade.teacher?.name || "",
+        comment: grade.comment || "",
+      });
+      return acc;
+    }, {});
+
+    Object.values(rows).forEach((studentRows) => {
+      studentRows.sort((a, b) => `${a.subject}${a.sequence}`.localeCompare(`${b.subject}${b.sequence}`));
+    });
+
+    return rows;
+  }, [gradesData?.results]);
+
+  const buildTranscriptStudent = (student: any) => ({
+    ...student,
+    grades: gradeRowsByStudent[student.recordId] || [],
+  });
+
+  const availableClasses = useMemo(
+    () => Array.from(new Set(studentList.map((student: any) => student.class).filter(Boolean))).sort(),
+    [studentList]
+  );
+
+  const availableSections = useMemo(
+    () => Array.from(new Set(studentList.map((student: any) => student.section).filter(Boolean))).sort(),
+    [studentList]
+  );
 
   const filteredStudents = useMemo(() => studentList.filter((s: any) => {
     const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) || s.id.toLowerCase().includes(searchTerm.toLowerCase());
@@ -144,14 +183,14 @@ export default function TranscriptsPage() {
                 <SelectTrigger className="flex-1 h-12 bg-accent/20 border-none rounded-xl font-bold text-xs"><SelectValue placeholder="All Sections" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Whole Node</SelectItem>
-                  {SECTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  {availableSections.map((section) => <SelectItem key={section} value={section}>{section}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Select value={classFilter} onValueChange={setClassFilter}>
                 <SelectTrigger className="flex-1 h-12 bg-accent/20 border-none rounded-xl font-bold text-xs"><SelectValue placeholder="All Classes" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Entire School</SelectItem>
-                  {CLASSES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  {availableClasses.map((className) => <SelectItem key={className} value={className}>{className}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -187,7 +226,7 @@ export default function TranscriptsPage() {
                   <TableCell className="text-center"><Badge className="bg-green-100 text-green-700 border-none text-[8px] font-black">VERIFIED</Badge></TableCell>
                   <TableCell className="text-right pr-8">
                     <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-primary/5" onClick={() => setPreviewStudent(s)}><Eye className="w-4 h-4 text-primary/60" /></Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-primary/5" onClick={() => setPreviewStudent(buildTranscriptStudent(s))}><Eye className="w-4 h-4 text-primary/60" /></Button>
                       <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-primary/5" onClick={() => handleIndividualIssue(s)}><Download className="w-4 h-4 text-primary/60" /></Button>
                     </div>
                   </TableCell>
@@ -234,9 +273,7 @@ export default function TranscriptsPage() {
 }
 
 function LandscapeTranscript({ student, platform }: { student: any, platform: any }) {
-  const currentGrade = student?.class || "2nde / Form 5";
-  const classIndex = CLASSES.indexOf(currentGrade);
-  const visibleClasses = CLASSES.slice(0, classIndex + 1);
+  const gradeRows = student?.grades || [];
 
   return (
     <div className="bg-white p-8 md:p-12 relative overflow-hidden font-serif text-black min-w-[1100px] print:p-0">
@@ -286,37 +323,31 @@ function LandscapeTranscript({ student, platform }: { student: any, platform: an
         <Table className="border-collapse">
           <TableHeader className="bg-black/5">
             <TableRow className="border-b-2 border-black h-12">
-              <TableHead rowSpan={2} className="border-r-2 border-black font-black text-black uppercase text-[10px] text-center w-48">Subject</TableHead>
-              {visibleClasses.map((cls, i) => (
-                <TableHead key={i} colSpan={3} className={cn("border-r-2 border-black font-black text-black uppercase text-[10px] text-center h-8", i === visibleClasses.length - 1 ? "border-r-0" : "")}>
-                  {cls.split(' / ')[1] || cls}
-                </TableHead>
-              ))}
-            </TableRow>
-            <TableRow className="border-b-2 border-black h-8">
-              {visibleClasses.map((_, i) => (
-                <React.Fragment key={i}>
-                  <TableHead className="border-r border-black font-bold text-[8px] text-center">T1</TableHead>
-                  <TableHead className="border-r border-black font-bold text-[8px] text-center">T2</TableHead>
-                  <TableHead className={cn("border-r-2 border-black font-bold text-[8px] text-center", i === visibleClasses.length - 1 ? "border-r-0" : "")}>T3</TableHead>
-                </React.Fragment>
-              ))}
+              <TableHead className="border-r-2 border-black font-black text-black uppercase text-[10px] text-center w-64">Subject</TableHead>
+              <TableHead className="border-r border-black font-black text-black uppercase text-[10px] text-center">Code</TableHead>
+              <TableHead className="border-r border-black font-black text-black uppercase text-[10px] text-center">Sequence</TableHead>
+              <TableHead className="border-r border-black font-black text-black uppercase text-[10px] text-center">Score / 20</TableHead>
+              <TableHead className="border-r border-black font-black text-black uppercase text-[10px] text-center">Teacher</TableHead>
+              <TableHead className="font-black text-black uppercase text-[10px] text-center">Remark</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {Object.entries(MOCK_TRANSCRIPT_DATA).map(([subject, years]: [string, any], idx) => (
-              <TableRow key={idx} className="border-b border-black last:border-0 h-10">
-                <TableCell className="border-r-2 border-black font-black text-[10px] uppercase py-2 pl-4">{subject}</TableCell>
-                {visibleClasses.map((_, i) => {
-                  const data = years[`f${i + 1}`] || ["---", "---", "---"];
-                  return (
-                    <React.Fragment key={i}>
-                      <TableCell className={cn("border-r border-black text-center text-[10px] font-mono", parseFloat(data[0]) < 10 ? "text-red-600" : "")}>{data[0]}</TableCell>
-                      <TableCell className={cn("border-r border-black text-center text-[10px] font-mono", parseFloat(data[1]) < 10 ? "text-red-600" : "")}>{data[1]}</TableCell>
-                      <TableCell className={cn("border-r-2 border-black text-center text-[10px] font-mono bg-accent/5", i === visibleClasses.length - 1 ? "border-r-0" : "", parseFloat(data[2]) < 10 ? "text-red-600" : "")}>{data[2]}</TableCell>
-                    </React.Fragment>
-                  );
-                })}
+            {gradeRows.length === 0 ? (
+              <TableRow className="h-16">
+                <TableCell colSpan={6} className="text-center text-[10px] font-black uppercase text-muted-foreground">
+                  No saved grades are available for this student yet.
+                </TableCell>
+              </TableRow>
+            ) : gradeRows.map((grade: any) => (
+              <TableRow key={grade.id} className="border-b border-black last:border-0 h-10">
+                <TableCell className="border-r-2 border-black font-black text-[10px] uppercase py-2 pl-4">{grade.subject}</TableCell>
+                <TableCell className="border-r border-black text-center text-[10px] font-mono">{grade.subjectCode || "---"}</TableCell>
+                <TableCell className="border-r border-black text-center text-[10px] font-bold">{grade.sequence}</TableCell>
+                <TableCell className={`border-r border-black text-center text-[10px] font-mono font-black ${Number(grade.score) < 10 ? "text-red-600" : "text-green-700"}`}>
+                  {Number(grade.score).toFixed(2)}
+                </TableCell>
+                <TableCell className="border-r border-black text-center text-[10px]">{grade.teacher || "---"}</TableCell>
+                <TableCell className="text-center text-[10px]">{grade.comment || "---"}</TableCell>
               </TableRow>
             ))}
           </TableBody>
