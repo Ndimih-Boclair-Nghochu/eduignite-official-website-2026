@@ -1,13 +1,12 @@
 
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n-context";
 import { useAuth } from "@/lib/auth-context";
 import { useStudent, useMyChildren } from "@/lib/hooks/useStudents";
 import { useGrades } from "@/lib/hooks/useGrades";
-import { usePayments } from "@/lib/hooks/useFees";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -66,16 +65,80 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import Link from "next/link";
+import { attendanceService } from "@/lib/api/services/attendance.service";
+import { resolveMediaUrl } from "@/lib/media";
 
 const CLASSES = ["6ème / Form 1", "5ème / Form 2", "4ème / Form 3", "3ème / Form 4", "2nde / Form 5", "1ère / Lower Sixth", "Terminale / Upper Sixth"];
 
-const MOCK_CHILDREN: any[] = [];
+function normalizeStatus(status?: string) {
+  const value = (status || "").toLowerCase();
+  if (value === "present" || value === "late" || value === "excused") return "present";
+  if (value === "absent") return "absent";
+  return "unknown";
+}
 
-const MOCK_GRADES: any[] = [];
+function buildGradeLedger(grades: any[] = []) {
+  const grouped = grades.reduce((acc: Record<string, any>, grade: any) => {
+    const subject = grade.subject?.name || grade.subject_name || "Unknown Subject";
+    const coefficient = Number(grade.subject?.coefficient || 1);
 
-const MOCK_TRANSCRIPT_DATA: Record<string, any> = {};
+    if (!acc[subject]) {
+      acc[subject] = {
+        subject,
+        teacher: grade.teacher_name || grade.teacher?.name || "",
+        coef: coefficient,
+        seq1: 0,
+        seq2: 0,
+        average: 0,
+        total: 0,
+        rank: "-",
+        initials: subject.substring(0, 2).toUpperCase(),
+        scores: [] as number[],
+      };
+    }
 
-const MOCK_TODAY_ATTENDANCE: any[] = [];
+    const score = Number(grade.score || 0);
+    const sequenceName = `${grade.sequence?.name || grade.sequence_name || ""}`.toLowerCase();
+    if (sequenceName.includes("1")) {
+      acc[subject].seq1 = score;
+    } else if (sequenceName.includes("2")) {
+      acc[subject].seq2 = score;
+    } else if (acc[subject].seq1 === 0) {
+      acc[subject].seq1 = score;
+    } else if (acc[subject].seq2 === 0) {
+      acc[subject].seq2 = score;
+    }
+
+    acc[subject].scores.push(score);
+    return acc;
+  }, {});
+
+  return Object.values(grouped).map((entry: any) => {
+    const average =
+      entry.scores.length > 0
+        ? entry.scores.reduce((sum: number, score: number) => sum + score, 0) / entry.scores.length
+        : 0;
+    return {
+      ...entry,
+      average,
+      total: average * entry.coef,
+    };
+  });
+}
+
+function buildTranscriptRows(grades: any[] = []) {
+  const grouped = grades.reduce((acc: Record<string, Record<string, number>>, grade: any) => {
+    const subject = grade.subject?.name || grade.subject_name || "Unknown Subject";
+    const sequence = grade.sequence?.name || grade.sequence_name || "Sequence";
+    if (!acc[subject]) {
+      acc[subject] = {};
+    }
+    acc[subject][sequence] = Number(grade.score || 0);
+    return acc;
+  }, {});
+
+  return Object.entries(grouped).map(([subject, sequences]) => ({ subject, sequences }));
+}
 
 export default function StudentDetailsPage() {
   const searchParams = useSearchParams();
@@ -87,51 +150,90 @@ export default function StudentDetailsPage() {
 
   const [viewingDoc, setViewingDoc] = useState<any>(null);
   const [viewingCertificate, setViewingCertificate] = useState<boolean>(false);
+  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
+  const [attendanceSummary, setAttendanceSummary] = useState<any>(null);
 
   // Fetch real student data
   const { data: studentData, isLoading: studentLoading } = useStudent(studentId || '');
   const { data: myChildrenData } = useMyChildren();
   const { data: gradesData } = useGrades({ student: studentId || undefined });
-  const { data: paymentsData } = usePayments({ payer: studentId || undefined });
 
-  // Map API student to shape used by the page
-  const student = studentData ? {
-    id: studentData.admission_number || studentData.user?.matricule || studentData.id,
-    uid: studentData.user?.id,
-    name: studentData.user?.name || 'Unknown',
-    class: studentData.student_class || 'Unknown',
-    section: studentData.section || 'Unknown',
-    email: studentData.user?.email || '',
-    status: 'active',
-    isLicensePaid: studentData.user?.is_license_paid || false,
-    avatar: studentData.user?.avatar,
-    dob: studentData.date_of_birth || '',
-    gender: studentData.gender || 'Unknown',
-    guardian: studentData.guardian_name || '',
-    guardianPhone: studentData.guardian_phone || '',
-    address: '',
-    annualAvg: studentData.annual_average || studentData.user?.annual_avg || 0,
-  } : (MOCK_CHILDREN.find((c: any) => c.id === studentId) || MOCK_CHILDREN[0]);
+  const childOptions = myChildrenData?.results || [];
+  const fallbackChild =
+    childOptions.find((child: any) => child.id === studentId || child.admission_number === studentId || child.user?.matricule === studentId) ||
+    childOptions[0];
+  const rawStudent = studentData || fallbackChild;
+
+  const gradeList = useMemo(() => buildGradeLedger(gradesData?.results || []), [gradesData?.results]);
+  const transcriptRows = useMemo(() => buildTranscriptRows(gradesData?.results || []), [gradesData?.results]);
+
+  const student = useMemo(() => {
+    if (!rawStudent) return null;
+
+    return {
+      recordId: rawStudent.id,
+      id: rawStudent.admission_number || rawStudent.user?.matricule || rawStudent.id,
+      uid: rawStudent.user?.id,
+      name: rawStudent.user?.name || "Unknown",
+      class: rawStudent.student_class || "Unknown",
+      section: rawStudent.section || "Unknown",
+      email: rawStudent.user?.email || "",
+      status: "active",
+      isLicensePaid: rawStudent.user?.is_license_paid || false,
+      avatar: resolveMediaUrl(rawStudent.user?.avatar) || "",
+      dob: rawStudent.date_of_birth || "",
+      gender: rawStudent.gender || "Unknown",
+      guardian: rawStudent.guardian_name || "",
+      guardianPhone: rawStudent.guardian_phone || "",
+      address: rawStudent.address || "",
+      annualAvg: Number(rawStudent.annual_average || rawStudent.user?.annual_avg || 0),
+      school: currentUser?.school,
+      grades: gradeList,
+      transcriptRows,
+      attendance: attendanceRecords,
+      attendanceSummary,
+    };
+  }, [attendanceRecords, attendanceSummary, currentUser?.school, gradeList, rawStudent, transcriptRows]);
 
   const loading = studentLoading && !student;
 
-  // Map grades data
-  const gradeList = gradesData?.results?.length
-    ? gradesData.results.map((g: any) => ({
-        subject: g.subject?.name || 'Unknown',
-        teacher: g.teacher || '',
-        coef: g.subject?.coefficient || 1,
-        seq1: g.score || 0,
-        seq2: 0,
-        average: g.score || 0,
-        total: (g.score || 0) * (g.subject?.coefficient || 1),
-        rank: '-',
-        initials: (g.subject?.name || 'UN').substring(0, 2).toUpperCase(),
-      }))
-    : MOCK_GRADES;
+  useEffect(() => {
+    const loadAttendance = async () => {
+      if (!rawStudent?.id) {
+        setAttendanceRecords([]);
+        setAttendanceSummary(null);
+        return;
+      }
 
-  // Map payments data
-  const paymentList = paymentsData?.results?.length ? paymentsData.results : [];
+      try {
+        const [recordsResponse, summaryResponse] = await Promise.all([
+          attendanceService.getAttendanceRecords({ student: rawStudent.id, limit: 50 }),
+          attendanceService.getStudentSummary(rawStudent.id),
+        ]);
+
+        const records = Array.isArray(recordsResponse)
+          ? recordsResponse
+          : recordsResponse?.results || [];
+
+        setAttendanceRecords(
+          records.map((record: any) => ({
+            subject: record.session?.subject_name || record.session?.subject || "General Studies",
+            time: record.session?.date || "",
+            teacher: record.session?.teacher_name || "School Registry",
+            status: normalizeStatus(record.status),
+            rawStatus: record.status,
+          }))
+        );
+        setAttendanceSummary(summaryResponse || null);
+      } catch (error) {
+        console.error("Failed to load child attendance dossier", error);
+        setAttendanceRecords([]);
+        setAttendanceSummary(null);
+      }
+    };
+
+    loadAttendance();
+  }, [rawStudent?.id]);
 
   const handleDownload = (title: string) => {
     toast({ title: "Processing PDF", description: `Your official copy of ${title} is being prepared for download.` });
@@ -276,23 +378,31 @@ export default function StudentDetailsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {gradeList.map((g: any, idx: number) => (
-                    <TableRow key={idx} className="h-16 border-b last:border-0 hover:bg-accent/5 transition-colors">
-                      <TableCell className="pl-8 font-black uppercase text-xs text-primary">{g.subject}</TableCell>
-                      <TableCell className="text-center font-mono font-bold">{g.coef}</TableCell>
-                      <TableCell className="text-center font-black text-primary bg-primary/5">{g.seq1.toFixed(2)}</TableCell>
-                      <TableCell className="text-center font-black text-primary bg-primary/5">{g.seq2.toFixed(2)}</TableCell>
-                      <TableCell className="text-center font-black text-secondary">{g.average.toFixed(2)}</TableCell>
-                      <TableCell className="text-right pr-8">
-                        <Badge className={cn(
-                          "text-[9px] font-black border-none px-3",
-                          g.average >= 10 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                        )}>
-                          {g.average >= 10 ? 'PASSED' : 'FAILED'}
-                        </Badge>
+                  {gradeList.length > 0 ? (
+                    gradeList.map((g: any, idx: number) => (
+                      <TableRow key={idx} className="h-16 border-b last:border-0 hover:bg-accent/5 transition-colors">
+                        <TableCell className="pl-8 font-black uppercase text-xs text-primary">{g.subject}</TableCell>
+                        <TableCell className="text-center font-mono font-bold">{g.coef}</TableCell>
+                        <TableCell className="text-center font-black text-primary bg-primary/5">{g.seq1.toFixed(2)}</TableCell>
+                        <TableCell className="text-center font-black text-primary bg-primary/5">{g.seq2.toFixed(2)}</TableCell>
+                        <TableCell className="text-center font-black text-secondary">{g.average.toFixed(2)}</TableCell>
+                        <TableCell className="text-right pr-8">
+                          <Badge className={cn(
+                            "text-[9px] font-black border-none px-3",
+                            g.average >= 10 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                          )}>
+                            {g.average >= 10 ? 'PASSED' : 'FAILED'}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
+                        No published grades are available for this student yet.
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -318,7 +428,7 @@ export default function StudentDetailsPage() {
                 </div>
               </div>
               <Badge className="bg-primary text-white border-none font-black px-4 py-1 uppercase text-[10px]">
-                {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
+                {attendanceSummary?.percentage != null ? `${Number(attendanceSummary.percentage).toFixed(0)}% present` : new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
               </Badge>
             </div>
           </Card>
@@ -334,13 +444,13 @@ export default function StudentDetailsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {MOCK_TODAY_ATTENDANCE.map((today: any, i: number) => (
-                    <TableRow key={i} className="hover:bg-accent/5 h-16 border-b last:border-0">
+                  {student.attendance.length > 0 ? student.attendance.map((today: any, i: number) => (
+                    <TableRow key={`${today.subject}-${i}`} className="hover:bg-accent/5 h-16 border-b last:border-0">
                       <TableCell className="pl-8 font-black uppercase text-xs text-primary">{today.subject}</TableCell>
                       <TableCell className="font-bold text-xs">
                         <div className="flex items-center gap-2">
                           <Clock className="w-3.5 h-3.5 text-primary/40" />
-                          {today.time}
+                          {today.time ? new Date(today.time).toLocaleDateString() : "Recorded"}
                         </div>
                       </TableCell>
                       <TableCell className="text-xs font-bold text-muted-foreground uppercase">{today.teacher}</TableCell>
@@ -354,7 +464,13 @@ export default function StudentDetailsPage() {
                         </Badge>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )) : (
+                    <TableRow>
+                      <TableCell colSpan={4} className="py-10 text-center text-sm text-muted-foreground">
+                        No attendance entries have been recorded for this learner yet.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -504,9 +620,13 @@ export default function StudentDetailsPage() {
 }
 
 function LandscapeTranscript({ student, platform }: { student: any, platform: any }) {
-  const currentGrade = student?.class || "2nde / Form 5";
-  const classIndex = CLASSES.indexOf(currentGrade);
-  const visibleClasses = CLASSES.slice(0, classIndex + 1);
+  const transcriptRows = student?.transcriptRows || [];
+  const visibleSequences = Array.from(
+    new Set(
+      transcriptRows.flatMap((row: any) => Object.keys(row.sequences || {}))
+    )
+  );
+  const sequenceHeaders = visibleSequences.length > 0 ? visibleSequences : ["No sequence"];
 
   return (
     <div className="bg-white p-8 md:p-12 relative overflow-hidden font-serif text-black min-w-[1100px] print:p-0">
@@ -555,39 +675,45 @@ function LandscapeTranscript({ student, platform }: { student: any, platform: an
         <Table className="border-collapse">
           <TableHeader className="bg-black/5">
             <TableRow className="border-b-2 border-black h-12">
-              <TableHead rowSpan={2} className="border-r-2 border-black font-black text-black uppercase text-[10px] text-center w-48">Subject</TableHead>
-              {visibleClasses.map((cls, i) => (
-                <TableHead key={i} colSpan={3} className={cn("border-r-2 border-black font-black text-black uppercase text-[10px] text-center h-8", i === visibleClasses.length - 1 ? "border-r-0" : "")}>
-                  {cls.split(' / ')[1] || cls}
+              <TableHead className="border-r-2 border-black font-black text-black uppercase text-[10px] text-center w-48">Subject</TableHead>
+              {sequenceHeaders.map((sequence, i) => (
+                <TableHead key={sequence} className={cn("border-r border-black font-black text-black uppercase text-[10px] text-center", i === sequenceHeaders.length - 1 ? "border-r-0" : "")}>
+                  {sequence}
                 </TableHead>
               ))}
-            </TableRow>
-            <TableRow className="border-b-2 border-black h-8">
-              {visibleClasses.map((_, i) => (
-                <React.Fragment key={i}>
-                  <TableHead className="border-r border-black font-bold text-[8px] text-center">T1</TableHead>
-                  <TableHead className="border-r border-black font-bold text-[8px] text-center">T2</TableHead>
-                  <TableHead className={cn("border-r-2 border-black font-bold text-[8px] text-center", i === visibleClasses.length - 1 ? "border-r-0" : "")}>T3</TableHead>
-                </React.Fragment>
-              ))}
+              <TableHead className="font-black text-black uppercase text-[10px] text-center">Decision</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {Object.entries(MOCK_TRANSCRIPT_DATA).map(([subject, years]: [string, any], idx) => (
-              <TableRow key={idx} className="border-b border-black last:border-0 h-10">
-                <TableCell className="border-r-2 border-black font-black text-[10px] uppercase py-2 pl-4">{subject}</TableCell>
-                {visibleClasses.map((_, i) => {
-                  const data = years[`f${i + 1}`] || ["---", "---", "---"];
+            {transcriptRows.length > 0 ? transcriptRows.map((row: any, idx: number) => (
+              <TableRow key={`${row.subject}-${idx}`} className="border-b border-black last:border-0 h-10">
+                <TableCell className="border-r-2 border-black font-black text-[10px] uppercase py-2 pl-4">{row.subject}</TableCell>
+                {sequenceHeaders.map((sequence, i) => {
+                  const score = row.sequences?.[sequence];
                   return (
-                    <React.Fragment key={i}>
-                      <TableCell className={cn("border-r border-black text-center text-[10px] font-mono", parseFloat(data[0]) < 10 ? "text-red-600" : "")}>{data[0]}</TableCell>
-                      <TableCell className={cn("border-r border-black text-center text-[10px] font-mono", parseFloat(data[1]) < 10 ? "text-red-600" : "")}>{data[1]}</TableCell>
-                      <TableCell className={cn("border-r-2 border-black text-center text-[10px] font-mono bg-accent/5", i === visibleClasses.length - 1 ? "border-r-0" : "", parseFloat(data[2]) < 10 ? "text-red-600" : "")}>{data[2]}</TableCell>
-                    </React.Fragment>
+                    <TableCell
+                      key={`${row.subject}-${sequence}`}
+                      className={cn(
+                        "border-r border-black text-center text-[10px] font-mono",
+                        i === sequenceHeaders.length - 1 ? "border-r-0" : "",
+                        score != null && Number(score) < 10 ? "text-red-600" : ""
+                      )}
+                    >
+                      {score != null ? Number(score).toFixed(2) : "---"}
+                    </TableCell>
                   );
                 })}
+                <TableCell className="text-center text-[10px] font-black text-[#264D73]">
+                  {Object.values(row.sequences || {}).some((value: any) => Number(value) >= 10) ? "PASSED" : "REVIEW"}
+                </TableCell>
               </TableRow>
-            ))}
+            )) : (
+              <TableRow>
+                <TableCell colSpan={sequenceHeaders.length + 2} className="py-10 text-center text-sm text-muted-foreground">
+                  No transcript grades are available yet for this learner.
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </div>
@@ -615,6 +741,14 @@ function LandscapeTranscript({ student, platform }: { student: any, platform: an
 }
 
 function PortraitReportCard({ student, platform, term }: { student: any, platform: any, term: string }) {
+  const grades = student?.grades || [];
+  const totalCoefficient = grades.reduce((sum: number, grade: any) => sum + Number(grade.coef || 0), 0);
+  const average = grades.length > 0
+    ? grades.reduce((sum: number, grade: any) => sum + Number(grade.average || 0), 0) / grades.length
+    : Number(student?.annualAvg || 0);
+  const presentDays = Number(student?.attendanceSummary?.present || 0);
+  const absentDays = Number(student?.attendanceSummary?.absent || 0);
+
   return (
     <div className="bg-white p-6 md:p-10 shadow-sm relative flex flex-col space-y-6 font-serif text-black max-w-[800px] mx-auto print:shadow-none print:p-0">
        <div className="grid grid-cols-12 gap-2 items-start text-center border-b border-black pb-4">
@@ -671,7 +805,7 @@ function PortraitReportCard({ student, platform, term }: { student: any, platfor
               </TableRow>
             </TableHeader>
             <TableBody>
-              {MOCK_GRADES.map((g, idx) => (
+              {grades.length > 0 ? grades.map((g: any, idx: number) => (
                 <TableRow key={idx} className="border-b border-black/10 last:border-0 h-7 hover:bg-accent/5">
                   <TableCell className="pl-2 font-bold text-[8px] uppercase border-r border-black/10">{g.subject}</TableCell>
                   <TableCell className="text-center text-[8px] border-r border-black/10 italic opacity-60">{g.teacher}</TableCell>
@@ -682,7 +816,13 @@ function PortraitReportCard({ student, platform, term }: { student: any, platfor
                   <TableCell className="text-center text-[8px] border-r border-black/10">{g.total.toFixed(2)}</TableCell>
                   <TableCell className="text-center text-[8px] pr-2">{g.rank}</TableCell>
                 </TableRow>
-              ))}
+              )) : (
+                <TableRow>
+                  <TableCell colSpan={8} className="py-8 text-center text-xs text-muted-foreground">
+                    No report-card grades are available yet.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
        </div>
@@ -690,16 +830,16 @@ function PortraitReportCard({ student, platform, term }: { student: any, platfor
        <div className="grid grid-cols-3 gap-4 mt-6">
           <div className="border border-dotted border-black/40 p-3 rounded-lg space-y-1.5 text-[8px] bg-accent/5">
             <h4 className="font-black text-[#264D73] uppercase border-b border-black/10 mb-1">Statistical Summary</h4>
-            <div className="flex justify-between border-b border-dotted border-black/20 pb-0.5"><span className="font-bold">Total Coefficient:</span><span className="font-black">29</span></div>
-            <div className="flex justify-between border-b border-dotted border-black/20 pb-0.5"><span className="font-bold text-[#264D73]">General Average:</span><span className="font-black text-[#264D73]">15.18</span></div>
-            <div className="flex justify-between pt-0.5"><span className="font-bold">Position:</span><span className="font-black">05 / 42</span></div>
+            <div className="flex justify-between border-b border-dotted border-black/20 pb-0.5"><span className="font-bold">Total Coefficient:</span><span className="font-black">{totalCoefficient}</span></div>
+            <div className="flex justify-between border-b border-dotted border-black/20 pb-0.5"><span className="font-bold text-[#264D73]">General Average:</span><span className="font-black text-[#264D73]">{average.toFixed(2)}</span></div>
+            <div className="flex justify-between pt-0.5"><span className="font-bold">Position:</span><span className="font-black">{student?.attendanceSummary?.rank || "—"}</span></div>
           </div>
 
           <div className="border border-dotted border-black/40 p-3 rounded-lg space-y-1.5 text-[8px] bg-accent/5">
             <h4 className="font-black text-[#264D73] uppercase border-b border-black/10 mb-1">Discipline & Presence</h4>
-            <div className="flex justify-between border-b border-dotted border-black/20 pb-0.5"><span className="font-bold">Days Present:</span><span className="font-black">42</span></div>
-            <div className="flex justify-between border-b border-dotted border-black/20 pb-0.5"><span className="font-bold">Days Absent:</span><span className="font-black">0</span></div>
-            <div className="flex justify-between pt-0.5"><span className="font-bold">Conduct:</span><span className="font-black">Exemplary</span></div>
+            <div className="flex justify-between border-b border-dotted border-black/20 pb-0.5"><span className="font-bold">Days Present:</span><span className="font-black">{presentDays}</span></div>
+            <div className="flex justify-between border-b border-dotted border-black/20 pb-0.5"><span className="font-bold">Days Absent:</span><span className="font-black">{absentDays}</span></div>
+            <div className="flex justify-between pt-0.5"><span className="font-bold">Conduct:</span><span className="font-black">{absentDays === 0 ? "Excellent" : "Needs Review"}</span></div>
           </div>
 
           <div className="space-y-4 flex flex-col justify-end">
