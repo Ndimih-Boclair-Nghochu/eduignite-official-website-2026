@@ -74,17 +74,43 @@ class PaymentViewSet(viewsets.ModelViewSet):
         return queryset
 
     def create(self, request, *args, **kwargs):
-        if request.user.role not in ['SCHOOL_ADMIN', 'SUB_ADMIN', 'BURSAR']:
-            raise PermissionDenied("Only bursars and administrators can record payments.")
-
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        is_staff_payment = request.user.role in ['SCHOOL_ADMIN', 'SUB_ADMIN', 'BURSAR']
+        payer = serializer.validated_data.get('payer') or request.user
+        fee_structure = serializer.validated_data.get('fee_structure')
+        mark_license_paid = serializer.validated_data.get('mark_license_paid', False)
+        is_self_service_license_payment = (
+            not is_staff_payment
+            and request.user.is_authenticated
+            and payer == request.user
+            and request.user.school_id is not None
+            and fee_structure is None
+            and mark_license_paid
+        )
+
+        if not is_staff_payment and not is_self_service_license_payment:
+            raise PermissionDenied("Only bursars and administrators can record school fee payments.")
 
         payment = serializer.save(
             school=request.user.school,
-            bursar=request.user,
+            bursar=request.user if is_staff_payment else None,
             reference_number=generate_reference_number()
         )
+
+        if is_self_service_license_payment:
+            payment.status = 'confirmed'
+            payment.confirmed_at = timezone.now()
+            payment.receipt_number = generate_receipt_number()
+            payment.notes = payment.notes or 'Self-service platform license payment'
+            payment.save(update_fields=['status', 'confirmed_at', 'receipt_number', 'notes', 'modified'])
+            Invoice.objects.get_or_create(
+                payment=payment,
+                defaults={
+                    'invoice_number': generate_invoice_number(),
+                    'issued_by': None,
+                }
+            )
 
         return Response(
             PaymentDetailSerializer(payment).data,

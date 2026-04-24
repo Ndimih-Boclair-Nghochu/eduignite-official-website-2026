@@ -88,6 +88,10 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         requester_school = getattr(getattr(request, 'user', None), 'school', None)
 
+        if not payer and request and request.user.is_authenticated:
+            attrs['payer'] = request.user
+            payer = request.user
+
         if beneficiary and requester_school and beneficiary.school_id != requester_school.id:
             raise serializers.ValidationError({'license_beneficiary': 'The selected student must belong to your school.'})
 
