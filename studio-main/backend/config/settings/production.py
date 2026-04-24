@@ -1,8 +1,4 @@
 from .base import *
-import sentry_sdk
-from sentry_sdk.integrations.django import DjangoIntegration
-from sentry_sdk.integrations.celery import CeleryIntegration
-from sentry_sdk.integrations.redis import RedisIntegration
 
 DEBUG = False
 
@@ -35,17 +31,25 @@ if render_external_url and render_external_url not in CSRF_TRUSTED_ORIGINS:
 # ── Sentry error monitoring ────────────────────────────────────────────────
 SENTRY_DSN = config('SENTRY_DSN', default='')
 if SENTRY_DSN:
-    sentry_sdk.init(
-        dsn=SENTRY_DSN,
-        integrations=[
-            DjangoIntegration(transaction_style='url'),
-            CeleryIntegration(),
-            RedisIntegration(),
-        ],
-        traces_sample_rate=config('SENTRY_TRACES_SAMPLE_RATE', default=0.1, cast=float),
-        send_default_pii=False,
-        environment='production',
-    )
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.django import DjangoIntegration
+        from sentry_sdk.integrations.celery import CeleryIntegration
+        from sentry_sdk.integrations.redis import RedisIntegration
+    except ImportError:
+        sentry_sdk = None
+    if sentry_sdk is not None:
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            integrations=[
+                DjangoIntegration(transaction_style='url'),
+                CeleryIntegration(),
+                RedisIntegration(),
+            ],
+            traces_sample_rate=config('SENTRY_TRACES_SAMPLE_RATE', default=0.1, cast=float),
+            send_default_pii=False,
+            environment='production',
+        )
 
 SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=True, cast=bool)
 
