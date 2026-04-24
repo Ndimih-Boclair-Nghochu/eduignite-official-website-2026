@@ -1032,6 +1032,18 @@ export interface PlatformStats {
 export type LiveClassStatus = "upcoming" | "live" | "ended" | "cancelled";
 export type LiveClassPlatform = "jitsi" | "zoom" | "google_meet" | "teams";
 
+export interface LiveClassParticipant {
+  id: string;
+  live_class: string;
+  student: string;
+  student_name: string;
+  student_avatar?: string | null;
+  joined_at?: string | null;
+  left_at?: string | null;
+  duration_attended?: number;
+  created?: string;
+}
+
 export interface LiveClass {
   id: string;
   title: string;
@@ -1056,6 +1068,7 @@ export interface LiveClass {
   enrolled_count: number;
   is_recorded: boolean;
   recording_url?: string;
+  participants?: LiveClassParticipant[];
   created: string;
   modified: string;
 }

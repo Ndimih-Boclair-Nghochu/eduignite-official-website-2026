@@ -52,6 +52,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { resolveMediaUrl } from "@/lib/media";
 
 const SECTIONS = ["Anglophone Section", "Francophone Section", "Technical Section"];
 
@@ -60,8 +61,6 @@ const SECTION_CLASSES: Record<string, string[]> = {
   "Francophone Section": ["6ème", "5ème", "4ème", "3ème", "2nde", "1ère", "Terminale"],
   "Technical Section": ["1ère Year", "2nd Year", "3rd Year", "4th Year", "5th Year", "6th Year", "7th Year"]
 };
-
-const MOCK_TEACHERS: any[] = [];
 
 const INITIAL_COURSES: any[] = [];
 
@@ -153,6 +152,7 @@ export default function CoursesPage() {
     () => schoolSettings?.class_levels?.filter(Boolean)?.length ? schoolSettings.class_levels : Array.from(new Set(Object.values(SECTION_CLASSES).flat())),
     [schoolSettings]
   );
+  const teacherOptions = useMemo(() => teachersData?.results || [], [teachersData?.results]);
 
   useEffect(() => {
     setNewSubject((current) => {
@@ -174,7 +174,7 @@ export default function CoursesPage() {
         name: s.name,
         instructorId: s.teacher || "",
         instructorName: s.teacher_name || "Unassigned",
-        instructorAvatar: `https://picsum.photos/seed/${s.code || s.id}/200/200`,
+        instructorAvatar: resolveMediaUrl((teacherOptions.find((teacher: any) => teacher.id === s.teacher)?.avatar)) || `https://picsum.photos/seed/${s.code || s.id}/200/200`,
         type: s.coefficient >= 4 ? "mandatory" : "optional",
         coefficient: s.coefficient || 1,
         color: ["bg-blue-500","bg-emerald-500","bg-purple-500","bg-rose-500","bg-amber-500"][
@@ -187,7 +187,7 @@ export default function CoursesPage() {
       setSubjects(INITIAL_COURSES);
     }
     setIsLoading(subjectsLoading);
-  }, [subjectsData, subjectsLoading]);
+  }, [subjectsData, subjectsLoading, teacherOptions]);
 
   const handleCreateSubject = async () => {
     if (!newSubject.name || !newSubject.id || !newSubject.instructorId || newSubject.targetClasses.length === 0) {
@@ -816,19 +816,19 @@ export default function CoursesPage() {
                   <div className="space-y-2">
                     <Label className="text-[10px] font-black uppercase text-muted-foreground ml-1">Assigned Teacher</Label>
                     <Select value={newSubject.instructorId} onValueChange={(value) => {
-                      const teacher = (teachersData?.results || MOCK_TEACHERS).find((item: any) => (item.id || item.user?.id) === value);
+                      const teacher = teacherOptions.find((item: any) => (item.id || item.user?.id) === value);
                       setNewSubject({
                         ...newSubject,
                         instructorId: value,
                         instructorName: teacher?.name || teacher?.user?.name || "",
-                        instructorAvatar: teacher?.avatar || teacher?.user?.avatar || "",
+                        instructorAvatar: resolveMediaUrl(teacher?.avatar || teacher?.user?.avatar) || "",
                       })
                     }}>
                       <SelectTrigger className="h-11 bg-accent/30 border-none rounded-xl font-bold">
                         <SelectValue placeholder="Select Instructor" />
                       </SelectTrigger>
                       <SelectContent>
-                        {(teachersData?.results || MOCK_TEACHERS).map((t: any) => (
+                        {teacherOptions.map((t: any) => (
                           <SelectItem key={t.id || t.user?.id} value={t.id || t.user?.id}>{t.name || t.user?.name}</SelectItem>
                         ))}
                       </SelectContent>

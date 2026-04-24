@@ -35,11 +35,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
+import { resolveMediaUrl } from "@/lib/media";
 
 const CLASSES = ["6ème / Form 1", "5ème / Form 2", "4ème / Form 3", "3ème / Form 4", "2nde / Form 5", "1ère / Lower Sixth", "Terminale / Upper Sixth"];
 const SECTIONS = ["Anglophone Section", "Francophone Section", "Technical Section"];
-
-const MOCK_STUDENTS: any[] = [];
 
 export default function TranscriptsPage() {
   const { user, platformSettings } = useAuth();
@@ -60,19 +59,17 @@ export default function TranscriptsPage() {
 
   // Map API students to the shape used by this page
   const apiStudents = useMemo(() => {
-    if (!studentsData?.results) return null;
-    return studentsData.results.map((s: any) => ({
+    return (studentsData?.results || []).map((s: any) => ({
       recordId: s.id,
       id: s.admission_number || s.user?.matricule || s.id,
       name: s.user?.name || 'Unknown',
       class: s.student_class || 'Unknown',
       section: s.section || 'Unknown',
-      avatar: s.user?.avatar,
+      avatar: resolveMediaUrl(s.user?.avatar) || '',
       dob: s.date_of_birth || '',
     }));
   }, [studentsData]);
-
-  const studentList = apiStudents || MOCK_STUDENTS;
+  const studentList = apiStudents;
 
   const gradeRowsByStudent = useMemo(() => {
     const rows = (gradesData?.results || []).reduce((acc: Record<string, any[]>, grade: any) => {

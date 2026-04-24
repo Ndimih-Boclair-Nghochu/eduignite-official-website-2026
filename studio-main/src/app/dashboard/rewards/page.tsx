@@ -50,12 +50,11 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { resolveMediaUrl } from "@/lib/media";
 
 // --- MOCK DATA ---
 const SECTIONS = ["Anglophone Section", "Francophone Section", "Technical Section"];
 const CLASSES = ["6ème / Form 1", "5ème / Form 2", "4ème / Form 3", "3ème / Form 4", "2nde / Form 5", "1ère / Lower Sixth", "Terminale / Upper Sixth"];
-
-const MOCK_STUDENTS: any[] = [];
 
 export default function AcademicRewardsPage() {
   const { user, platformSettings, updatePlatformSettings, staffRemarks } = useAuth();
@@ -78,19 +77,16 @@ export default function AcademicRewardsPage() {
   // Fetch real honour roll data from API
   const { data: honourRollData } = useHonourRoll();
 
-  // Map API students to the shape used by this page, with fallback to mock
+  // Map API students to the shape used by this page
   const studentList = useMemo(() => {
-    if (honourRollData?.results?.length) {
-      return honourRollData.results.map((s: any) => ({
-        id: s.admission_number || s.user?.matricule || s.id,
-        name: s.user?.name || 'Unknown',
-        class: s.student_class || 'Unknown',
-        section: s.section || 'Unknown',
-        average: parseFloat(s.annual_average || s.user?.annual_avg || '0'),
-        avatar: s.user?.avatar,
-      }));
-    }
-    return MOCK_STUDENTS;
+    return (honourRollData?.results || []).map((s: any) => ({
+      id: s.admission_number || s.user?.matricule || s.id,
+      name: s.user?.name || 'Unknown',
+      class: s.student_class || 'Unknown',
+      section: s.section || 'Unknown',
+      average: parseFloat(s.annual_average || s.user?.annual_avg || '0'),
+      avatar: resolveMediaUrl(s.user?.avatar) || '',
+    }));
   }, [honourRollData]);
 
   const availableSections = useMemo(

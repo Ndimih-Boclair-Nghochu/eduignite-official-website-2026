@@ -41,8 +41,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-
-const MOCK_STUDENTS: any[] = [];
+import { resolveMediaUrl } from "@/lib/media";
 
 const CLASSES = ["6ème / Form 1", "5ème / Form 2", "4ème / Form 3", "3ème / Form 4", "2nde / Form 5", "1ère / Lower Sixth", "Terminale / Upper Sixth"];
 const SECTIONS = ["Anglophone Section", "Francophone Section", "Technical Section"];
@@ -61,22 +60,19 @@ export default function IdCardsPage() {
   // Fetch real student data from API
   const { data: studentsApiData } = useStudents({ search: searchTerm || undefined });
 
-  // Build student list merging API data with mock fallback
+  // Build student list from real API data
   const studentList = useMemo(() => {
-    if (studentsApiData?.results?.length) {
-      return studentsApiData.results.map((s: any) => ({
-        id: s.admission_number || s.user?.matricule || s.id,
-        name: s.user?.name || 'Unknown',
-        class: s.student_class || 'Unknown',
-        section: s.section || 'Unknown',
-        avatar: s.user?.avatar,
-        dob: s.date_of_birth || '',
-        guardian: s.guardian_name || '',
-        guardianPhone: s.guardian_phone || '',
-        address: s.address || '',
-      }));
-    }
-    return MOCK_STUDENTS;
+    return (studentsApiData?.results || []).map((s: any) => ({
+      id: s.admission_number || s.user?.matricule || s.id,
+      name: s.user?.name || 'Unknown',
+      class: s.student_class || 'Unknown',
+      section: s.section || 'Unknown',
+      avatar: resolveMediaUrl(s.user?.avatar) || '',
+      dob: s.date_of_birth || '',
+      guardian: s.guardian_name || '',
+      guardianPhone: s.guardian_phone || '',
+      address: s.address || '',
+    }));
   }, [studentsApiData]);
 
   const availableClasses = useMemo(

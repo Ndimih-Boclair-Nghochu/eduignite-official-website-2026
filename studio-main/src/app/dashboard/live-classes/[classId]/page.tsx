@@ -49,6 +49,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { format } from "date-fns";
+import { resolveMediaUrl } from "@/lib/media";
 
 interface ChatMessage {
   id: string;
@@ -59,8 +60,6 @@ interface ChatMessage {
   isSelf: boolean;
   avatar: string;
 }
-
-const MOCK_PARTICIPANTS: any[] = [];
 
 export default function LiveClassRoomPage() {
   const params = useParams();
@@ -85,9 +84,7 @@ export default function LiveClassRoomPage() {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [gallerySearch, setGallerySearch] = useState("");
   const [isSyncingAttendance, setIsSyncingAttendance] = useState(false);
-  const [presenceMap, setPresenceMap] = useState<Record<string, boolean>>(
-    MOCK_PARTICIPANTS.reduce((acc, p) => ({ ...acc, [p.id]: true }), {})
-  );
+  const [presenceMap, setPresenceMap] = useState<Record<string, boolean>>({});
 
   // Interaction State
   const [loveCount, setLoveCount] = useState(12);
@@ -110,8 +107,32 @@ export default function LiveClassRoomPage() {
   const isEnded = classStatus === "ended";
   const meetingUrl = liveClass?.meeting_url;
   const platform = liveClass?.platform ?? "jitsi";
-  const enrolledCount = liveClass?.enrolled_count ?? 0;
-  const activeSpeakers = useMemo(() => MOCK_PARTICIPANTS.slice(0, 2), []);
+  const participants = useMemo(
+    () =>
+      (liveClass?.participants || []).map((participant) => ({
+        id: participant.student,
+        name: participant.student_name || "Participant",
+        avatar: resolveMediaUrl(participant.student_avatar) || "",
+        liveClassParticipantId: participant.id,
+      })),
+    [liveClass?.participants]
+  );
+  const enrolledCount = liveClass?.enrolled_count ?? participants.length;
+  const activeSpeakers = useMemo(() => participants.slice(0, 2), [participants]);
+
+  useEffect(() => {
+    if (!participants.length) {
+      setPresenceMap({});
+      return;
+    }
+
+    setPresenceMap((current) =>
+      participants.reduce((acc: Record<string, boolean>, participant) => {
+        acc[participant.id] = current[participant.id] ?? true;
+        return acc;
+      }, {})
+    );
+  }, [participants]);
 
   const handleStartClass = () => {
     startMutation.mutate(classId, {
@@ -389,13 +410,13 @@ export default function LiveClassRoomPage() {
                 </div>
                 <div className="absolute bottom-4 left-4 flex items-center gap-3">
                   <div className="flex -space-x-2">
-                    {MOCK_PARTICIPANTS.slice(0, 3).map((p, i) => (
+                    {participants.slice(0, 3).map((p, i) => (
                       <Avatar key={i} className="h-6 w-6 border-2 border-[#252841]">
                         <AvatarImage src={p.avatar} />
                       </Avatar>
                     ))}
                   </div>
-                  <span className="text-[10px] font-bold text-white/60">{enrolledCount > 0 ? `${enrolledCount} enrolled` : `${MOCK_PARTICIPANTS.length} watching`}</span>
+                  <span className="text-[10px] font-bold text-white/60">{enrolledCount > 0 ? `${enrolledCount} enrolled` : "No participants yet"}</span>
                 </div>
               </div>
             )}
@@ -484,7 +505,7 @@ export default function LiveClassRoomPage() {
             <div className="p-4 border-b border-white/5 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <h3 className="text-[10px] font-black uppercase tracking-widest text-white">Registry</h3>
-                <Badge variant="outline" className="text-[8px] h-4 border-white/10 text-white/40">{enrolledCount || MOCK_PARTICIPANTS.length} Active</Badge>
+                <Badge variant="outline" className="text-[8px] h-4 border-white/10 text-white/40">{enrolledCount || participants.length} Active</Badge>
               </div>
               <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-500 hover:text-white" onClick={() => setIsGalleryOpen(true)}>
                 <LayoutGrid className="w-3 h-3" />
@@ -493,7 +514,7 @@ export default function LiveClassRoomPage() {
             
             <ScrollArea className="flex-1">
               <div className="p-4 grid grid-cols-2 gap-3 pb-10">
-                {MOCK_PARTICIPANTS.map((p) => (
+                {participants.map((p) => (
                   <div key={p.id} className="relative aspect-square rounded-xl overflow-hidden border border-white/5 bg-slate-800 group cursor-pointer hover:border-secondary/40 transition-all">
                     <img src={p.avatar} alt={p.name} className="w-full h-full object-cover opacity-60 group-hover:scale-110 transition-transform duration-500" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
@@ -648,7 +669,7 @@ export default function LiveClassRoomPage() {
           
           <ScrollArea className="max-h-[50vh] bg-white/5 p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {MOCK_PARTICIPANTS.map((p) => (
+              {participants.map((p) => (
                 <div 
                   key={p.id} 
                   className={cn(
@@ -702,7 +723,7 @@ export default function LiveClassRoomPage() {
                    </div>
                    <div>
                       <DialogTitle className="text-2xl font-black uppercase tracking-tight">Participant Gallery</DialogTitle>
-                      <DialogDescription className="text-white/60">Node Registry • {enrolledCount || MOCK_PARTICIPANTS.length} Connected</DialogDescription>
+                      <DialogDescription className="text-white/60">Node Registry • {enrolledCount || participants.length} Connected</DialogDescription>
                    </div>
                 </div>
                 <div className="flex items-center gap-4 mr-8">
@@ -723,7 +744,7 @@ export default function LiveClassRoomPage() {
           </DialogHeader>
           <ScrollArea className="flex-1 p-8">
              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 pb-10">
-                {MOCK_PARTICIPANTS.filter(p => p.name.toLowerCase().includes(gallerySearch.toLowerCase()) || p.id.toLowerCase().includes(gallerySearch.toLowerCase())).map((p) => (
+                {participants.filter(p => p.name.toLowerCase().includes(gallerySearch.toLowerCase()) || p.id.toLowerCase().includes(gallerySearch.toLowerCase())).map((p) => (
                   <div key={p.id} className="relative aspect-video rounded-3xl overflow-hidden border border-white/5 bg-[#252841] group shadow-xl hover:border-secondary/40 transition-all">
                      <img src={p.avatar} alt={p.name} className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-all duration-500" />
                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent" />

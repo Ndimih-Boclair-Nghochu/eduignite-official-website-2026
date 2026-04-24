@@ -6,6 +6,7 @@ class LiveClassSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.name', read_only=True)
     teacher_avatar = serializers.URLField(source='teacher.avatar', read_only=True, allow_null=True)
     subject_display = serializers.SerializerMethodField()
+    participants = serializers.SerializerMethodField()
     end_time = serializers.DateTimeField(read_only=True)
     is_live_now = serializers.BooleanField(read_only=True)
     status = serializers.CharField(read_only=True)
@@ -18,12 +19,16 @@ class LiveClassSerializer(serializers.ModelSerializer):
             'target_class', 'meeting_url', 'meeting_id', 'meeting_password',
             'platform', 'start_time', 'end_time', 'duration_minutes', 'status',
             'is_live_now', 'max_participants', 'enrolled_count',
-            'is_recorded', 'recording_url', 'created', 'modified',
+            'is_recorded', 'recording_url', 'participants', 'created', 'modified',
         ]
         read_only_fields = ['id', 'enrolled_count', 'created', 'modified', 'status']
 
     def get_subject_display(self, obj):
         return obj.subject_display
+
+    def get_participants(self, obj):
+        enrollments = obj.enrollments.select_related('student').all()
+        return LiveClassEnrollmentSerializer(enrollments, many=True).data
 
     def validate_start_time(self, value):
         from django.utils import timezone
