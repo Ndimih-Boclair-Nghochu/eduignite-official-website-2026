@@ -1,5 +1,9 @@
 from rest_framework import serializers
 from .models import FeeStructure, Payment, Invoice
+from django.contrib.auth import get_user_model
+
+
+User = get_user_model()
 
 
 class FeeStructureSerializer(serializers.ModelSerializer):
@@ -56,7 +60,7 @@ class PaymentDetailSerializer(serializers.ModelSerializer):
 
 class PaymentCreateSerializer(serializers.ModelSerializer):
     license_beneficiary = serializers.PrimaryKeyRelatedField(
-        queryset=None,
+        queryset=User.objects.none(),
         required=False,
         allow_null=True,
         write_only=True,
@@ -72,8 +76,6 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from django.contrib.auth import get_user_model
-        User = get_user_model()
         self.fields['license_beneficiary'].queryset = User.objects.filter(role='STUDENT')
 
     def validate_amount(self, value):
