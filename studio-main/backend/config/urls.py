@@ -49,6 +49,7 @@ api_v1_patterns = [
     path('support/', include('apps.support.urls', namespace='support')),
     path('staff-remarks/', include('apps.staff_remarks.urls', namespace='staff_remarks')),
     path('live-classes/', include('apps.live_classes.urls', namespace='live_classes')),
+    path('exams/', include('apps.exams.urls', namespace='exams')),
 ]
 
 urlpatterns = [

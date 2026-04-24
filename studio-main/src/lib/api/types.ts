@@ -380,6 +380,92 @@ export interface GradeAssignmentSubmissionRequest {
   feedback?: string;
 }
 
+export type ExamMode = 'ONLINE' | 'ONSITE';
+export type ExamStatus = 'DRAFT' | 'SCHEDULED' | 'CANCELLED' | 'COMPLETED';
+
+export interface ExamQuestion {
+  id?: string;
+  order: number;
+  text: string;
+  image_url?: string;
+  options: string[];
+  correct_option?: number;
+  marks: number;
+  explanation?: string;
+}
+
+export interface Exam {
+  id: string;
+  school: string;
+  subject?: string | null;
+  subject_name?: string;
+  sequence?: string | null;
+  sequence_name?: string;
+  teacher?: string | null;
+  teacher_name?: string;
+  title: string;
+  exam_type: string;
+  mode: ExamMode;
+  target_class: string;
+  instructions?: string;
+  venue?: string;
+  start_time: string;
+  end_time?: string;
+  duration_minutes: number;
+  status: ExamStatus;
+  pass_mark?: number | string;
+  allow_review?: boolean;
+  is_live_now?: boolean;
+  total_questions?: number;
+  questions?: ExamQuestion[];
+  created?: string;
+  modified?: string;
+}
+
+export interface CreateExamRequest {
+  subject?: string | null;
+  sequence?: string | null;
+  teacher?: string | null;
+  title: string;
+  exam_type: string;
+  mode: ExamMode;
+  target_class: string;
+  instructions?: string;
+  venue?: string;
+  start_time: string;
+  duration_minutes: number;
+  status?: ExamStatus;
+  pass_mark?: number;
+  allow_review?: boolean;
+  questions?: ExamQuestion[];
+}
+
+export interface ExamSubmission {
+  id: string;
+  exam: Exam;
+  exam_title?: string;
+  subject_name?: string;
+  target_class?: string;
+  student?: string;
+  student_name?: string;
+  student_admission?: string;
+  answers?: Record<string, number>;
+  score?: number | string | null;
+  total_marks?: number | string | null;
+  percentage?: number | string | null;
+  status: 'IN_PROGRESS' | 'SUBMITTED' | 'GRADED' | 'ABSENT';
+  started_at?: string;
+  submitted_at?: string | null;
+  graded_at?: string | null;
+  created?: string;
+  modified?: string;
+}
+
+export interface CreateExamSubmissionRequest {
+  exam: string;
+  answers: Record<string, number>;
+}
+
 export interface Sequence {
   id: string;
   school: string;

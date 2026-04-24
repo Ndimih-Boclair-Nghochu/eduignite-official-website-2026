@@ -15,3 +15,4 @@ export { supportService } from './support.service';
 export { staffRemarksService } from './staff-remarks.service';
 export { chatService } from './chat.service';
 export { aiService } from './ai.service';
+export { examsService } from './exams.service';

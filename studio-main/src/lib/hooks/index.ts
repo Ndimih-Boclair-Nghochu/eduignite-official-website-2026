@@ -239,3 +239,16 @@ export {
   useStartClass,
   useEndClass,
 } from './useLiveClasses';
+
+// Exams hooks
+export {
+  useExams,
+  useActiveExams,
+  useExam,
+  useCreateExam,
+  useDeleteExam,
+  useExamSubmissions,
+  useExamSubmission,
+  useMyExamResults,
+  useCreateExamSubmission,
+} from './useExams';

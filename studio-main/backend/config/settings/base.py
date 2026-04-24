@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'apps.support',
     'apps.staff_remarks',
     'apps.live_classes',
+    'apps.exams',
 ]
 
 MIDDLEWARE = [

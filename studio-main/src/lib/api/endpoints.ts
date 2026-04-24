@@ -58,6 +58,14 @@ export const API = {
     END: (id: string) => `/live-classes/${id}/end/`,
     CANCEL: (id: string) => `/live-classes/${id}/cancel/`,
   },
+  EXAMS: {
+    BASE: '/exams/exams/',
+    DETAIL: (id: string) => `/exams/exams/${id}/`,
+    ACTIVE: '/exams/exams/active/',
+    SUBMISSIONS: '/exams/submissions/',
+    SUBMISSION_DETAIL: (id: string) => `/exams/submissions/${id}/`,
+    MY_RESULTS: '/exams/submissions/my_results/',
+  },
   STUDENTS: {
     BASE: '/students/students/',
     HONOUR_ROLL: '/students/students/honour_roll/',

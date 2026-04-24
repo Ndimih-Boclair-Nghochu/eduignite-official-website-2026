@@ -1,223 +1,128 @@
-
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, BookOpen, CalendarDays, ChevronRight, Clock, History, Info, LayoutGrid, MapPin, PenTool, Plus, Printer, Timer, User, X } from "lucide-react";
+
 import { useAuth } from "@/lib/auth-context";
 import { useI18n } from "@/lib/i18n-context";
-import { useSequences, useSubjects, useActiveSequence } from "@/lib/hooks/useGrades";
+import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+import { getApiErrorMessage } from "@/lib/api/errors";
+import { useActiveSequence, useSequences, useSubjects } from "@/lib/hooks/useGrades";
 import { useStudents } from "@/lib/hooks/useStudents";
 import { useSchoolSettings } from "@/lib/hooks/useSchools";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { useCreateExam, useExams, useMyExamResults } from "@/lib/hooks/useExams";
+import type { CreateExamRequest, ExamQuestion } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { 
-  PenTool, 
-  Clock, 
-  Calendar, 
-  Award, 
-  CheckCircle2, 
-  Plus, 
-  ChevronRight, 
-  Timer,
-  BookOpen,
-  FileText,
-  Printer,
-  Users,
-  TrendingUp,
-  User,
-  XCircle,
-  BarChart3,
-  ArrowLeft,
-  ChevronLeft,
-  MapPin,
-  ShieldCheck,
-  Building2,
-  CalendarDays,
-  LayoutGrid,
-  Zap,
-  Info,
-  History,
-  AlertCircle,
-  X
-} from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
-import Link from "next/link";
-import { cn } from "@/lib/utils";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useRouter } from "next/navigation";
 
-// Mock Subjects for Automatic Teacher Suggestion
-const SUBJECT_METADATA: any[] = [];
+const EXAM_TYPES = [
+  { value: "SEQUENCE", label: "Sequence Assessment" },
+  { value: "MID_TERM", label: "Mid-Term Evaluation" },
+  { value: "END_TERM", label: "End of Term Examination" },
+  { value: "MOCK", label: "Mock Exam" },
+  { value: "OTHER", label: "Other" },
+];
 
-const ANGLOPHONE_CLASSES = ["Form 1", "Form 2", "Form 3", "Form 4", "Form 5", "Lower Sixth", "Upper Sixth"];
-const FRANCOPHONE_CLASSES = ["6ème", "5ème", "4ème", "3ème", "2nde", "1ère", "Terminale"];
-const TECHNICAL_CLASSES = ["1ère Year", "2nd Year", "3rd Year", "4th Year", "5th Year", "6th Year", "7th Year"];
+type ExamFormState = {
+  title: string; exam_type: string; mode: "ONSITE" | "ONLINE"; subject: string; sequence: string;
+  target_class: string; instructions: string; venue: string; start_date: string; start_time: string;
+  duration_minutes: string; questions: ExamQuestion[];
+};
 
-const ALL_CLASSES = [...ANGLOPHONE_CLASSES, ...FRANCOPHONE_CLASSES, ...TECHNICAL_CLASSES];
-
-const ROOM_CATEGORIES: any[] = [];
-
-const EXAM_TYPES = ["Sequence Assessment", "Mid-Term Evaluation", "End of Term Examination", "Mock Exam"];
-const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-const TIME_SLOTS = ["08:00 AM", "09:30 AM", "11:00 AM", "01:00 PM", "02:30 PM"];
-
-const MOCK_ONLINE_EXAMS: any[] = [];
-
-const MOCK_EXAM_HISTORY: any[] = [];
-
-const INITIAL_ONSITE_EXAMS: any[] = [];
+const defaultQuestion = (order: number): ExamQuestion => ({ order, text: "", image_url: "", options: ["", "", "", ""], correct_option: 0, marks: 1, explanation: "" });
+const defaultForm = (): ExamFormState => ({ title: "", exam_type: "SEQUENCE", mode: "ONSITE", subject: "", sequence: "", target_class: "", instructions: "", venue: "", start_date: "", start_time: "", duration_minutes: "30", questions: [defaultQuestion(1)] });
+const formatDateTime = (v?: string) => (!v ? "Not scheduled" : Number.isNaN(new Date(v).getTime()) ? v : new Date(v).toLocaleString());
+const examStatus = (exam: any) => {
+  if (exam.status === "CANCELLED") return "Cancelled";
+  if (exam.status === "COMPLETED") return "Completed";
+  const now = Date.now(); const start = new Date(exam.start_time).getTime(); const end = new Date(exam.end_time ?? exam.start_time).getTime();
+  if (start <= now && now < end && exam.mode === "ONLINE") return "Live";
+  if (start > now) return "Upcoming";
+  return "Completed";
+};
 
 export default function ExamsPage() {
-  const { user } = useAuth();
-  const { t, language } = useI18n();
-  const { toast } = useToast();
   const router = useRouter();
-  
-  const [isDrawingTimetable, setIsDrawingTimetable] = useState(false);
-  const [isSchedulingOnsite, setIsSchedulingOnsite] = useState(false);
-  const [viewingInstructions, setViewingInstructions] = useState<any>(null);
-  const [onsiteExams, setOnsiteExams] = useState<any[]>(INITIAL_ONSITE_EXAMS as any[]);
-  
-  const isSchoolAdmin = user?.role === "SCHOOL_ADMIN";
-  const isSubAdmin = user?.role === "SUB_ADMIN";
+  const { user } = useAuth();
+  const { language } = useI18n();
+  const { toast } = useToast();
   const isTeacher = user?.role === "TEACHER";
-  const isAdmin = isSchoolAdmin || isSubAdmin;
   const isStudent = user?.role === "STUDENT";
+  const isAdmin = user?.role === "SCHOOL_ADMIN" || user?.role === "SUB_ADMIN";
+  const canScheduleExams = isAdmin || isTeacher;
+  const [isScheduling, setIsScheduling] = useState(false);
+  const [viewingInstructions, setViewingInstructions] = useState<any>(null);
+  const [form, setForm] = useState<ExamFormState>(defaultForm);
 
-  const canScheduleExams = isSchoolAdmin || isSubAdmin || isTeacher;
   const { data: schoolSettings } = useSchoolSettings(user?.school?.id || "");
-
-  // Fetch real subjects and sequences from API
   const { data: subjectsData } = useSubjects();
   const { data: sequencesData } = useSequences();
   const { data: activeSequenceData } = useActiveSequence();
   const { data: studentsData } = useStudents();
+  const { data: examsData, isLoading: examsLoading } = useExams();
+  const { data: resultsData, isLoading: resultsLoading } = useMyExamResults();
+  const createExam = useCreateExam();
 
-  // Build onsite exams from real sequences data
+  const exams = examsData?.results ?? [];
+  const subjects = subjectsData?.results ?? [];
+  const sequences = sequencesData?.results ?? [];
+  const activeSequence = activeSequenceData?.results?.[0];
+
   useEffect(() => {
-    if (sequencesData?.results?.length) {
-      const fromApi = sequencesData.results.map((seq: any) => ({
-        id: seq.id,
-        title: seq.name,
-        type: "Sequence Assessment",
-        subject: "All Subjects",
-        class: "All Classes",
-        room: "TBD",
-        date: seq.start_date,
-        time: "08:00",
-        teacher: "Various",
-        status: seq.is_active ? "scheduled" : "completed",
-        instructions: `Term ${seq.term} sequence assessment for academic year ${seq.academic_year}.`,
-      }));
-      setOnsiteExams(fromApi);
-    }
-  }, [sequencesData]);
+    if (activeSequence?.id && !form.sequence) setForm((prev) => ({ ...prev, sequence: activeSequence.id }));
+  }, [activeSequence, form.sequence]);
 
-  // Real subjects for teacher filtering (with mock fallback)
-  const teacherSubjectNames = useMemo(() => {
-    if (isTeacher && subjectsData?.results) {
-      return subjectsData.results
-        .filter((s: any) => s.teacher === user?.name || s.teacher === user?.id)
-        .map((s: any) => s.name);
-    }
-    return ["Advanced Physics", "General Chemistry"]; // fallback
-  }, [isTeacher, subjectsData, user]);
-
+  const teacherSubjectNames = useMemo(
+    () => !isTeacher ? [] : subjects.filter((s: any) => String(s.teacher) === String(user?.id) || s.teacher_name === user?.name).map((s: any) => s.name),
+    [isTeacher, subjects, user]
+  );
   const availableClasses = useMemo(() => {
-    const studentClasses = Array.from(
-      new Set((studentsData?.results ?? []).map((student: any) => student.student_class).filter(Boolean))
-    );
-    if (studentClasses.length) return studentClasses;
-    if (schoolSettings?.class_levels?.filter(Boolean)?.length) return schoolSettings.class_levels;
-    return ALL_CLASSES;
+    const classes = Array.from(new Set((studentsData?.results ?? []).map((s: any) => s.student_class).filter(Boolean)));
+    if (classes.length) return classes;
+    return schoolSettings?.class_levels?.length ? schoolSettings.class_levels : [];
   }, [studentsData, schoolSettings]);
+  const filteredSubjects = useMemo(() => isTeacher ? subjects.filter((s: any) => teacherSubjectNames.includes(s.name)) : subjects, [isTeacher, subjects, teacherSubjectNames]);
+  const onsiteExams = useMemo(() => exams.filter((e: any) => e.mode === "ONSITE").filter((e: any) => !isTeacher || teacherSubjectNames.includes(e.subject_name)), [exams, isTeacher, teacherSubjectNames]);
+  const activeOnlineExams = useMemo(() => exams.filter((e: any) => e.mode === "ONLINE" && e.status === "SCHEDULED" && new Date(e.end_time ?? e.start_time).getTime() > Date.now()), [exams]);
+  const timetableRows = useMemo(() => availableClasses.map((className) => ({ className, exams: onsiteExams.filter((e: any) => e.target_class === className).slice(0, 5) })), [availableClasses, onsiteExams]);
 
-  const filteredSubjects = useMemo(() => {
-    if (isTeacher) {
-      return SUBJECT_METADATA.filter(s => teacherSubjectNames.includes(s.name));
+  const updateQuestion = (index: number, patch: Partial<ExamQuestion>) => setForm((prev) => ({ ...prev, questions: prev.questions.map((q, i) => i === index ? { ...q, ...patch } : q) }));
+  const updateOption = (qIndex: number, oIndex: number, value: string) => setForm((prev) => ({ ...prev, questions: prev.questions.map((q, i) => i !== qIndex ? q : { ...q, options: q.options.map((o, oi) => oi === oIndex ? value : o) }) }));
+
+  const handleCreateExam = async () => {
+    if (!form.title || !form.subject || !form.target_class || !form.start_date || !form.start_time) {
+      toast({ variant: "destructive", title: "Missing information", description: "Please complete the required exam fields." }); return;
     }
-    return SUBJECT_METADATA;
-  }, [isTeacher]);
-
-  const [timetableFormData, setTimetableFormData] = useState<any>({
-    class: "",
-    subject: "",
-    day: "",
-    time: "",
-    room: "",
-    teacher: ""
-  });
-
-  const [onsiteFormData, setOnsiteFormData] = useState<any>({
-    title: "",
-    type: "Sequence Assessment",
-    subject: "",
-    class: "",
-    room: "",
-    date: "",
-    time: "",
-    teacher: ""
-  });
-
-  const filteredOnsiteExams = useMemo(() => {
-    if (isSchoolAdmin || isStudent) return onsiteExams;
-    if (isTeacher) return onsiteExams.filter((e: any) => teacherSubjectNames.includes(e.subject));
-    return onsiteExams;
-  }, [onsiteExams, isSchoolAdmin, isStudent, isTeacher]);
-
-  const currentTime = new Date();
-  const activeExams = MOCK_ONLINE_EXAMS.filter(exam => {
-    const end = new Date(exam.endTime);
-    return end > currentTime && exam.status !== 'cancelled';
-  });
-
-  useEffect(() => {
-    const allSubjects = subjectsData?.results || SUBJECT_METADATA;
-    const meta = allSubjects.find((s: any) => s.name === timetableFormData.subject);
-    if (meta) {
-      setTimetableFormData(prev => ({ ...prev, teacher: meta.teacher }));
+    if (form.mode === "ONSITE" && !form.venue.trim()) {
+      toast({ variant: "destructive", title: "Venue required", description: "Please provide the venue for this onsite exam." }); return;
     }
-  }, [timetableFormData.subject]);
-
-  useEffect(() => {
-    const allSubjects2 = subjectsData?.results || SUBJECT_METADATA;
-    const meta = allSubjects2.find((s: any) => s.name === onsiteFormData.subject);
-    if (meta) {
-      setOnsiteFormData(prev => ({ ...prev, teacher: meta.teacher }));
+    const questions = form.questions.map((q, i) => ({ ...q, order: i + 1, options: q.options.map((o) => o.trim()).filter(Boolean) })).filter((q) => q.text.trim());
+    if (form.mode === "ONLINE") {
+      const invalid = !questions.length || questions.some((q) => q.options.length < 2 || typeof q.correct_option !== "number" || q.correct_option >= q.options.length);
+      if (invalid) { toast({ variant: "destructive", title: "Question setup incomplete", description: "Each online exam question needs at least two options and one correct answer." }); return; }
     }
-  }, [onsiteFormData.subject]);
-
-  const handleScheduleOnsite = () => {
-    const newExam = {
-      id: `OE-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
-      ...onsiteFormData,
-      section: isTeacher ? "Personal Subject" : "Institution Wide",
-      status: 'Scheduled'
+    const payload: CreateExamRequest = {
+      title: form.title.trim(), exam_type: form.exam_type, mode: form.mode, subject: form.subject, sequence: form.sequence || null,
+      target_class: form.target_class, instructions: form.instructions.trim(), venue: form.mode === "ONSITE" ? form.venue.trim() : "",
+      start_time: new Date(`${form.start_date}T${form.start_time}`).toISOString(), duration_minutes: Number(form.duration_minutes || "30"),
+      status: "SCHEDULED", allow_review: true, questions: form.mode === "ONLINE" ? questions : [],
     };
-    setOnsiteExams(prev => [newExam, ...prev]);
-    setIsSchedulingOnsite(false);
-    toast({ title: "Onsite Exam Scheduled", description: `${onsiteFormData.teacher} assigned as invigilator.` });
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'VERIFIED': return <CheckCircle2 className="w-3 h-3 mr-1" />;
-      case 'ABSENT': return <XCircle className="w-3 h-3 mr-1" />;
-      default: return null;
-    }
-  };
-
-  const getStatusStyles = (status: string) => {
-    switch (status) {
-      case 'VERIFIED': return "bg-green-100 text-green-700";
-      case 'ABSENT': return "bg-red-100 text-red-700";
-      default: return "";
+    try {
+      await createExam.mutateAsync(payload);
+      toast({ title: form.mode === "ONLINE" ? "Online exam created" : "Onsite exam scheduled", description: "The exam is now saved and available across the platform." });
+      setIsScheduling(false); setForm(defaultForm());
+    } catch (error) {
+      toast({ variant: "destructive", title: "Exam save failed", description: getApiErrorMessage(error, "We could not save this exam right now.") });
     }
   };
 
@@ -225,384 +130,183 @@ export default function ExamsPage() {
     <div className="space-y-8 pb-20">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.back()} className="rounded-full hover:bg-white shadow-sm shrink-0">
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
+          <Button variant="ghost" size="icon" onClick={() => router.back()} className="rounded-full hover:bg-white shadow-sm shrink-0"><ArrowLeft className="w-5 h-5" /></Button>
           <div>
-            <h1 className="text-3xl font-bold text-primary font-headline flex items-center gap-3">
-              <div className="p-2 bg-primary rounded-xl shadow-lg">
-                <PenTool className="w-6 h-6 text-secondary" />
-              </div>
-              {isStudent ? (language === 'en' ? 'Examinations' : 'Examens') : (language === 'en' ? 'Institutional Schedules' : 'Calendrier Institutionnel')}
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              {isStudent 
-                ? (language === 'en' ? 'Access your online assessments and track your exam history.' : 'Accédez à vos évaluations en ligne et suivez votre historique d\'examens.')
-                : (language === 'en' ? `Coordinating schedules and onsite evaluations.` : `Coordination des horaires et des évaluations sur site.`)}
-            </p>
+            <h1 className="text-3xl font-bold text-primary font-headline flex items-center gap-3"><div className="p-2 bg-primary rounded-xl shadow-lg"><PenTool className="w-6 h-6 text-secondary" /></div>{isStudent ? "Examinations" : "Institutional Schedules"}</h1>
+            <p className="text-muted-foreground mt-1">{isStudent ? "Access your live assessments, onsite schedules, and graded history." : "Manage school examinations with live schedules and traceable student results."}</p>
           </div>
         </div>
 
         {canScheduleExams && (
-          <div className="flex flex-wrap gap-2">
-            {isAdmin && (
-              <Dialog open={isDrawingTimetable} onOpenChange={setIsDrawingTimetable}>
-                <DialogTrigger asChild>
-                  <Button className="flex-1 md:flex-none gap-2 shadow-lg h-12 px-6 rounded-2xl bg-secondary text-primary hover:bg-secondary/90 font-bold">
-                    <LayoutGrid className="w-5 h-5" /> {language === 'en' ? 'Draw Timetable' : 'Gérer l\'Emploi du Temps'}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl">
-                  <DialogHeader className="bg-primary p-8 text-white relative">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-white/10 rounded-2xl">
-                        <CalendarDays className="w-8 h-8 text-secondary" />
-                      </div>
-                      <div>
-                        <DialogTitle className="text-2xl font-black">Master Schedule Slot</DialogTitle>
-                        <DialogDescription className="text-white/60">Assigning slots across institutional sections.</DialogDescription>
-                      </div>
-                    </div>
-                    <Button variant="ghost" size="icon" onClick={() => setIsDrawingTimetable(false)} className="absolute top-4 right-4 text-white/40 hover:text-white">
-                      <X className="w-6 h-6" />
-                    </Button>
-                  </DialogHeader>
-                  <div className="p-8 space-y-6 max-h-[60vh] overflow-y-auto">
-                    <div className="grid grid-cols-2 gap-6">
-                      <div className="col-span-2 space-y-2">
-                        <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Target Class</Label>
-                        <Select onValueChange={(v) => setTimetableFormData({...timetableFormData, class: v})}>
-                          <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl"><SelectValue placeholder="Select Class" /></SelectTrigger>
-                          <SelectContent>{availableClasses.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Subject</Label>
-                        <Select onValueChange={(v) => setTimetableFormData({...timetableFormData, subject: v})}>
-                          <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl"><SelectValue placeholder="Select Subject" /></SelectTrigger>
-                          <SelectContent>{(subjectsData?.results || SUBJECT_METADATA).map((s: any) => <SelectItem key={s.name || s.id} value={s.name}>{s.name}</SelectItem>)}</SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Day of Week</Label>
-                        <Select onValueChange={(v) => setTimetableFormData({...timetableFormData, day: v})}>
-                          <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl"><SelectValue placeholder="Select Day" /></SelectTrigger>
-                          <SelectContent>{DAYS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Time Slot</Label>
-                        <Select onValueChange={(v) => setTimetableFormData({...timetableFormData, time: v})}>
-                          <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl"><SelectValue placeholder="Select Time" /></SelectTrigger>
-                          <SelectContent>{TIME_SLOTS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Venue</Label>
-                        <Select onValueChange={(v) => setTimetableFormData({...timetableFormData, room: v})}>
-                          <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl"><SelectValue placeholder="Select Room" /></SelectTrigger>
-                          <SelectContent>
-                            {ROOM_CATEGORIES.map(cat => (
-                              <SelectGroup key={cat.label}>
-                                <SelectLabel className="text-[10px] uppercase font-black opacity-40 px-2 py-1.5">{cat.label}</SelectLabel>
-                                {cat.rooms.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-                              </SelectGroup>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-                  <DialogFooter className="bg-accent/20 p-6 border-t border-accent">
-                    <Button onClick={() => setIsDrawingTimetable(false)} className="w-full h-12 font-bold shadow-lg">Confirm & Sync Schedules</Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            )}
-
-            <Dialog open={isSchedulingOnsite} onOpenChange={setIsSchedulingOnsite}>
-              <DialogTrigger asChild>
-                <Button variant="outline" className="flex-1 md:flex-none gap-2 shadow-sm h-12 px-6 rounded-2xl border-primary/20 bg-white">
-                  <CalendarDays className="w-5 h-5 text-primary" /> {language === 'en' ? 'Schedule Onsite Exam' : 'Planifier Exam sur Site'}
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl">
-                <DialogHeader className="bg-primary p-8 text-white relative">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 bg-white/10 rounded-2xl">
-                      <PenTool className="w-8 h-8 text-secondary" />
-                    </div>
-                    <div>
-                      <DialogTitle className="text-2xl font-black">Schedule Physical Exam</DialogTitle>
-                      <DialogDescription className="text-white/60">
-                        {isTeacher ? "Plan an evaluation for your assigned subjects." : "Coordinates physical seating and invigilation duties."}
-                      </DialogDescription>
-                    </div>
-                  </div>
-                  <Button variant="ghost" size="icon" onClick={() => setIsSchedulingOnsite(false)} className="absolute top-4 right-4 text-white/40 hover:text-white">
-                    <X className="w-6 h-6" />
-                  </Button>
-                </DialogHeader>
-                <div className="p-8 space-y-6 max-h-[60vh] overflow-y-auto">
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="col-span-2 space-y-2">
-                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Exam Title</Label>
-                      <Input placeholder="e.g. End of Term Paper" className="h-12 bg-accent/30 border-none rounded-xl font-bold" onChange={(e) => setOnsiteFormData({...onsiteFormData, title: e.target.value})} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Exam Type</Label>
-                      <Select onValueChange={(v) => setOnsiteFormData({...onsiteFormData, type: v})} value={onsiteFormData.type}>
-                        <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl font-bold"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {EXAM_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Subject</Label>
-                      <Select onValueChange={(v) => setOnsiteFormData({...onsiteFormData, subject: v})}>
-                        <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl font-bold"><SelectValue placeholder="Choose Subject" /></SelectTrigger>
-                        <SelectContent>{filteredSubjects.map((s: any) => <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Class</Label>
-                      <Select onValueChange={(v) => setOnsiteFormData({...onsiteFormData, class: v})}>
-                        <SelectTrigger className="h-12 bg-accent/30 border-none rounded-xl font-bold"><SelectValue placeholder="Choose Class" /></SelectTrigger>
-                        <SelectContent>{availableClasses.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Venue</Label>
-                      <Input 
-                        placeholder="e.g. Hall A or Lab 1" 
-                        className="h-12 bg-accent/30 border-none rounded-xl font-bold" 
-                        value={onsiteFormData.room}
-                        onChange={(e) => setOnsiteFormData({...onsiteFormData, room: e.target.value})} 
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Exam Date</Label>
-                      <Input type="date" className="h-12 bg-accent/30 border-none rounded-xl" onChange={(e) => setOnsiteFormData({...onsiteFormData, date: e.target.value})} />
-                    </div>
-                  </div>
+          <Dialog open={isScheduling} onOpenChange={setIsScheduling}>
+            <DialogTrigger asChild><Button className="gap-2 shadow-lg h-12 px-6 rounded-2xl bg-secondary text-primary hover:bg-secondary/90 font-bold"><Plus className="w-5 h-5" /> Create Exam</Button></DialogTrigger>
+            <DialogContent className="sm:max-w-4xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl">
+              <DialogHeader className="bg-primary p-8 text-white relative">
+                <div className="flex items-center gap-4"><div className="p-3 bg-white/10 rounded-2xl"><CalendarDays className="w-8 h-8 text-secondary" /></div><div><DialogTitle className="text-2xl font-black">Create Exam</DialogTitle><DialogDescription className="text-white/70">Schedule onsite exams or publish real online MCQs for your learners.</DialogDescription></div></div>
+                <Button variant="ghost" size="icon" onClick={() => setIsScheduling(false)} className="absolute top-4 right-4 text-white/40 hover:text-white"><X className="w-6 h-6" /></Button>
+              </DialogHeader>
+              <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2"><Label>Exam mode</Label><Select value={form.mode} onValueChange={(value: "ONSITE" | "ONLINE") => setForm((prev) => ({ ...prev, mode: value }))}><SelectTrigger className="h-12 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ONSITE">Onsite</SelectItem><SelectItem value="ONLINE">Online MCQ</SelectItem></SelectContent></Select></div>
+                  <div className="space-y-2"><Label>Exam type</Label><Select value={form.exam_type} onValueChange={(value) => setForm((prev) => ({ ...prev, exam_type: value }))}><SelectTrigger className="h-12 rounded-xl"><SelectValue /></SelectTrigger><SelectContent>{EXAM_TYPES.map((type) => <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="md:col-span-2 space-y-2"><Label>Exam title</Label><Input value={form.title} onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))} className="h-12 rounded-xl" placeholder="e.g. Sequence 2 Mathematics MCQ" /></div>
+                  <div className="space-y-2"><Label>Subject</Label><Select value={form.subject} onValueChange={(value) => setForm((prev) => ({ ...prev, subject: value }))}><SelectTrigger className="h-12 rounded-xl"><SelectValue placeholder="Choose subject" /></SelectTrigger><SelectContent>{filteredSubjects.map((subject: any) => <SelectItem key={subject.id} value={subject.id}>{subject.name}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="space-y-2"><Label>Sequence</Label><Select value={form.sequence} onValueChange={(value) => setForm((prev) => ({ ...prev, sequence: value }))}><SelectTrigger className="h-12 rounded-xl"><SelectValue placeholder="Choose sequence" /></SelectTrigger><SelectContent>{sequences.map((sequence: any) => <SelectItem key={sequence.id} value={sequence.id}>{sequence.name}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="space-y-2"><Label>Target class</Label><Select value={form.target_class} onValueChange={(value) => setForm((prev) => ({ ...prev, target_class: value }))}><SelectTrigger className="h-12 rounded-xl"><SelectValue placeholder="Choose class" /></SelectTrigger><SelectContent>{availableClasses.map((className) => <SelectItem key={className} value={className}>{className}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="space-y-2"><Label>Duration (minutes)</Label><Input type="number" min="5" value={form.duration_minutes} onChange={(event) => setForm((prev) => ({ ...prev, duration_minutes: event.target.value }))} className="h-12 rounded-xl" /></div>
+                  <div className="space-y-2"><Label>Start date</Label><Input type="date" value={form.start_date} onChange={(event) => setForm((prev) => ({ ...prev, start_date: event.target.value }))} className="h-12 rounded-xl" /></div>
+                  <div className="space-y-2"><Label>Start time</Label><Input type="time" value={form.start_time} onChange={(event) => setForm((prev) => ({ ...prev, start_time: event.target.value }))} className="h-12 rounded-xl" /></div>
+                  {form.mode === "ONSITE" && <div className="space-y-2"><Label>Venue</Label><Input value={form.venue} onChange={(event) => setForm((prev) => ({ ...prev, venue: event.target.value }))} className="h-12 rounded-xl" placeholder="Hall A / Room 2 / Physics Lab" /></div>}
+                  <div className="md:col-span-2 space-y-2"><Label>Instructions</Label><textarea value={form.instructions} onChange={(event) => setForm((prev) => ({ ...prev, instructions: event.target.value }))} className="w-full rounded-2xl border bg-background px-4 py-3 min-h-28" placeholder="Write the instructions students and invigilators should see." /></div>
                 </div>
-                <DialogFooter className="bg-accent/20 p-6 border-t border-accent">
-                  <Button onClick={handleScheduleOnsite} disabled={!onsiteFormData.title || !onsiteFormData.subject} className="w-full h-12 font-bold shadow-lg">Confirm Exam Schedule</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
+                {form.mode === "ONLINE" && (
+                  <div className="space-y-6 rounded-3xl border bg-accent/10 p-6">
+                    <div className="flex items-center justify-between gap-4">
+                      <div><h3 className="text-lg font-black text-primary">Online Exam Questions</h3><p className="text-sm text-muted-foreground">Add real MCQ content for students before saving the exam.</p></div>
+                      <Button type="button" variant="outline" onClick={() => setForm((prev) => ({ ...prev, questions: [...prev.questions, defaultQuestion(prev.questions.length + 1)] }))} className="gap-2"><Plus className="w-4 h-4" /> Add Question</Button>
+                    </div>
+                    {form.questions.map((question, questionIndex) => (
+                      <div key={`modal-question-${questionIndex}`} className="rounded-2xl border bg-white p-5 space-y-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <h4 className="font-black text-primary">Question {questionIndex + 1}</h4>
+                          {form.questions.length > 1 && <Button type="button" variant="ghost" size="sm" onClick={() => setForm((prev) => ({ ...prev, questions: prev.questions.filter((_, i) => i !== questionIndex).map((q, i) => ({ ...q, order: i + 1 })) }))}>Remove</Button>}
+                        </div>
+                        <div className="space-y-2"><Label>Question text</Label><textarea value={question.text} onChange={(event) => updateQuestion(questionIndex, { text: event.target.value })} className="w-full rounded-xl border bg-background px-4 py-3 min-h-24" /></div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {question.options.map((option, optionIndex) => <div key={`modal-q-${questionIndex}-o-${optionIndex}`} className="space-y-2"><Label>Option {String.fromCharCode(65 + optionIndex)}</Label><Input value={option} onChange={(event) => updateOption(questionIndex, optionIndex, event.target.value)} /></div>)}
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="space-y-2"><Label>Correct option</Label><Select value={String(question.correct_option ?? 0)} onValueChange={(value) => updateQuestion(questionIndex, { correct_option: Number(value) })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{question.options.map((_, optionIndex) => <SelectItem key={optionIndex} value={String(optionIndex)}>{String.fromCharCode(65 + optionIndex)}</SelectItem>)}</SelectContent></Select></div>
+                          <div className="space-y-2"><Label>Marks</Label><Input type="number" min="1" value={question.marks} onChange={(event) => updateQuestion(questionIndex, { marks: Number(event.target.value || "1") })} /></div>
+                          <div className="space-y-2"><Label>Image URL (optional)</Label><Input value={question.image_url ?? ""} onChange={(event) => updateQuestion(questionIndex, { image_url: event.target.value })} /></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <DialogFooter className="bg-accent/20 p-6 border-t border-accent"><Button onClick={handleCreateExam} disabled={createExam.isPending} className="w-full h-12 font-bold shadow-lg">{createExam.isPending ? "Saving..." : "Save Exam"}</Button></DialogFooter>
+            </DialogContent>
+          </Dialog>
         )}
       </div>
 
       <Tabs defaultValue="onsite" className="w-full">
-        <TabsList className={cn(
-          "grid w-full mb-8 bg-white shadow-sm border h-auto p-1 rounded-2xl overflow-x-auto no-scrollbar",
-          isStudent ? "grid-cols-3 lg:w-[600px]" : "grid-cols-3 lg:w-[600px]"
-        )}>
-          <TabsTrigger value="onsite" className="gap-2 py-3 rounded-xl transition-all text-xs lg:text-sm whitespace-nowrap">
-            <CalendarDays className="w-4 h-4" /> {language === 'en' ? 'Onsite Exams' : 'Exams sur Site'}
-          </TabsTrigger>
-          {isStudent && (
-            <TabsTrigger value="available" className="gap-2 py-3 rounded-xl transition-all text-xs lg:text-sm whitespace-nowrap">
-              <PenTool className="w-4 h-4" /> {language === 'en' ? 'Live MCQs' : 'QCM Live'}
-            </TabsTrigger>
-          )}
-          <TabsTrigger value="history" className="gap-2 py-3 rounded-xl transition-all text-xs lg:text-sm whitespace-nowrap">
-            <History className="w-4 h-4" /> {language === 'en' ? 'History' : 'Historique'}
-          </TabsTrigger>
-          {!isStudent && !isTeacher && (
-            <TabsTrigger value="timetable" className="gap-2 py-3 rounded-xl transition-all text-xs lg:text-sm whitespace-nowrap">
-              <LayoutGrid className="w-4 h-4" /> {language === 'en' ? 'Master Timetable' : 'Emplois du Temps'}
-            </TabsTrigger>
-          )}
+        <TabsList className={cn("grid w-full mb-8 bg-white shadow-sm border h-auto p-1 rounded-2xl overflow-x-auto no-scrollbar", isStudent ? "grid-cols-3 lg:w-[600px]" : "grid-cols-3 lg:w-[700px]")}>
+          <TabsTrigger value="onsite" className="gap-2 py-3 rounded-xl transition-all text-xs lg:text-sm whitespace-nowrap"><CalendarDays className="w-4 h-4" /> Onsite Exams</TabsTrigger>
+          {isStudent && <TabsTrigger value="available" className="gap-2 py-3 rounded-xl transition-all text-xs lg:text-sm whitespace-nowrap"><PenTool className="w-4 h-4" /> Live MCQs</TabsTrigger>}
+          <TabsTrigger value="history" className="gap-2 py-3 rounded-xl transition-all text-xs lg:text-sm whitespace-nowrap"><History className="w-4 h-4" /> History</TabsTrigger>
+          {!isStudent && <TabsTrigger value="timetable" className="gap-2 py-3 rounded-xl transition-all text-xs lg:text-sm whitespace-nowrap"><LayoutGrid className="w-4 h-4" /> Class Overview</TabsTrigger>}
         </TabsList>
 
-        <TabsContent value="onsite" className="mt-0 animate-in fade-in slide-in-from-bottom-4">
+        <TabsContent value="onsite" className="mt-0">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filteredOnsiteExams.map((exam) => (
+            {onsiteExams.map((exam: any) => (
               <Card key={exam.id} className="border-none shadow-sm overflow-hidden group hover:shadow-md transition-all bg-white">
                 <div className="bg-accent/30 p-4 border-b flex justify-between items-center">
-                  <Badge variant="outline" className="text-[10px] font-black uppercase tracking-widest border-primary/20 text-primary">{exam.class}</Badge>
-                  <Badge className="bg-primary text-white border-none font-bold text-[9px] px-3">{exam.status}</Badge>
+                  <Badge variant="outline" className="text-[10px] font-black uppercase tracking-widest border-primary/20 text-primary">{exam.target_class}</Badge>
+                  <Badge className="bg-primary text-white border-none font-bold text-[9px] px-3">{examStatus(exam)}</Badge>
                 </div>
                 <CardHeader>
                   <CardTitle className="text-xl font-black text-primary leading-tight">{exam.title}</CardTitle>
-                  <CardDescription className="font-bold flex items-center gap-2 mt-1">
-                    <BookOpen className="w-3.5 h-3.5 text-secondary" /> {exam.subject}
-                  </CardDescription>
+                  <CardDescription className="font-bold flex items-center gap-2 mt-1"><BookOpen className="w-3.5 h-3.5 text-secondary" /> {exam.subject_name ?? "General"}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest flex items-center gap-1"><MapPin className="w-3 h-3 text-primary/40" /> Venue</p>
-                      <p className="text-xs font-black text-primary">{exam.room}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest flex items-center gap-1"><Clock className="w-3 h-3 text-primary/40" /> Schedule</p>
-                      <p className="text-xs font-black text-primary">{exam.date} • {exam.time}</p>
-                    </div>
+                    <div className="space-y-1"><p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest flex items-center gap-1"><MapPin className="w-3 h-3 text-primary/40" /> Venue</p><p className="text-xs font-black text-primary">{exam.venue || "TBD"}</p></div>
+                    <div className="space-y-1"><p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest flex items-center gap-1"><Clock className="w-3 h-3 text-primary/40" /> Schedule</p><p className="text-xs font-black text-primary">{formatDateTime(exam.start_time)}</p></div>
                   </div>
                 </CardContent>
-                <CardFooter className="pt-0 p-4 border-t bg-accent/5">
-                   <p className="text-[9px] font-bold text-muted-foreground uppercase flex items-center gap-2">
-                     <User className="w-3 h-3" /> Invigilator: {exam.teacher}
-                   </p>
-                </CardFooter>
+                <CardFooter className="pt-0 p-4 border-t bg-accent/5"><p className="text-[9px] font-bold text-muted-foreground uppercase flex items-center gap-2"><User className="w-3 h-3" /> Invigilator: {exam.teacher_name || "School Staff"}</p></CardFooter>
               </Card>
             ))}
-            {filteredOnsiteExams.length === 0 && (
-              <div className="col-span-full py-20 text-center border-2 border-dashed rounded-[2rem] bg-white/50 space-y-4">
-                <CalendarDays className="w-12 h-12 text-primary/10 mx-auto" />
-                <p className="text-muted-foreground font-medium">No physical exams scheduled in your purview.</p>
-              </div>
-            )}
+            {!onsiteExams.length && !examsLoading && <div className="col-span-full py-20 text-center border-2 border-dashed rounded-[2rem] bg-white/50 space-y-4"><CalendarDays className="w-12 h-12 text-primary/10 mx-auto" /><p className="text-muted-foreground font-medium">No physical exams are scheduled yet.</p></div>}
           </div>
         </TabsContent>
 
-        <TabsContent value="available" className="mt-0 animate-in fade-in slide-in-from-bottom-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {activeExams.map((exam) => {
-              const isLive = new Date(exam.startTime) <= currentTime;
-              return (
-                <Card key={exam.id} className="border-none shadow-xl overflow-hidden group hover:shadow-2xl transition-all duration-300 rounded-3xl bg-white">
-                  <div className={cn("h-1.5 w-full", isLive ? "bg-red-600" : "bg-secondary")} />
-                  <CardHeader>
-                    <div className="flex justify-between items-start mb-2">
-                      <Badge variant="secondary" className="bg-primary/5 text-primary border-none text-[9px] font-black uppercase tracking-widest">
-                        {exam.subject}
-                      </Badge>
-                      {isLive && (
-                        <Badge className="bg-red-600 text-white border-none text-[9px] font-black animate-pulse">LIVE</Badge>
+        {isStudent && (
+          <TabsContent value="available" className="mt-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {activeOnlineExams.map((exam: any) => {
+                const status = examStatus(exam);
+                const isLive = status === "Live";
+                return (
+                  <Card key={exam.id} className="border-none shadow-xl overflow-hidden group hover:shadow-2xl transition-all duration-300 rounded-3xl bg-white">
+                    <div className={cn("h-1.5 w-full", isLive ? "bg-red-600" : "bg-secondary")} />
+                    <CardHeader>
+                      <div className="flex justify-between items-start mb-2">
+                        <Badge variant="secondary" className="bg-primary/5 text-primary border-none text-[9px] font-black uppercase tracking-widest">{exam.subject_name ?? "Subject"}</Badge>
+                        <Badge className={cn("border-none text-[9px] font-black", isLive ? "bg-red-600 text-white" : "bg-accent text-primary")}>{status}</Badge>
+                      </div>
+                      <CardTitle className="text-xl font-black text-primary">{exam.title}</CardTitle>
+                      <CardDescription className="font-medium flex items-center gap-2"><User className="w-3.5 h-3.5 text-secondary" /> {exam.teacher_name || "Assigned Teacher"}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-3 rounded-xl bg-accent/30 border border-accent space-y-1"><p className="text-[9px] font-black text-muted-foreground uppercase">Duration</p><p className="text-sm font-black flex items-center gap-2"><Timer className="w-3.5 h-3.5 text-primary" /> {exam.duration_minutes}m</p></div>
+                        <div className="p-3 rounded-xl bg-accent/30 border border-accent space-y-1"><p className="text-[9px] font-black text-muted-foreground uppercase">Start Time</p><p className="text-sm font-black truncate">{formatDateTime(exam.start_time)}</p></div>
+                      </div>
+                    </CardContent>
+                    <CardFooter className="pt-0 p-6">
+                      {isLive ? (
+                        <Button asChild className="w-full h-12 rounded-xl font-black uppercase tracking-widest text-xs gap-2 shadow-lg bg-primary text-white"><Link href={`/dashboard/exams/take?id=${exam.id}`}>Enter Examination <ChevronRight className="w-4 h-4" /></Link></Button>
+                      ) : (
+                        <Button variant="outline" className="w-full h-12 rounded-xl font-black uppercase tracking-widest text-xs gap-2" onClick={() => setViewingInstructions(exam)}><Info className="w-4 h-4 text-primary" /> View Instructions</Button>
                       )}
-                    </div>
-                    <CardTitle className="text-xl font-black text-primary">{exam.title}</CardTitle>
-                    <CardDescription className="font-medium flex items-center gap-2">
-                      <User className="w-3.5 h-3.5 text-secondary" /> {exam.teacher}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-3 rounded-xl bg-accent/30 border border-accent space-y-1">
-                        <p className="text-[9px] font-black text-muted-foreground uppercase">Duration</p>
-                        <p className="text-sm font-black flex items-center gap-2"><Timer className="w-3.5 h-3.5 text-primary" /> {exam.duration}m</p>
-                      </div>
-                      <div className="p-3 rounded-xl bg-accent/30 border border-accent space-y-1">
-                        <p className="text-[9px] font-black text-muted-foreground uppercase">Start Time</p>
-                        <p className="text-sm font-black truncate">{new Date(exam.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                  <CardFooter className="pt-0 p-6">
-                    {isLive ? (
-                      <Button asChild className="w-full h-12 rounded-xl font-black uppercase tracking-widest text-xs gap-2 shadow-lg bg-primary text-white">
-                        <Link href={`/dashboard/exams/take?id=${exam.id}`}>
-                          {language === 'en' ? 'Enter Examination' : 'Démarrer l\'Examen'}
-                          <ChevronRight className="w-4 h-4" />
-                        </Link>
-                      </Button>
-                    ) : (
-                      <Button 
-                        variant="outline"
-                        className="w-full h-12 rounded-xl font-black uppercase tracking-widest text-xs gap-2"
-                        onClick={() => setViewingInstructions(exam)}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className="flex items-center gap-2">
-                            <Info className="w-4 h-4 text-primary" />
-                            {language === 'en' ? 'View Instructions' : 'Voir Instructions'}
-                          </div>
-                        </div>
-                      </Button>
-                    )}
-                  </CardFooter>
-                </Card>
-              );
-            })}
-          </div>
-        </TabsContent>
+                    </CardFooter>
+                  </Card>
+                );
+              })}
+              {!activeOnlineExams.length && !examsLoading && <div className="col-span-full py-20 text-center border-2 border-dashed rounded-[2rem] bg-white/50 space-y-4"><PenTool className="w-12 h-12 text-primary/10 mx-auto" /><p className="text-muted-foreground font-medium">No online exams are available for your class right now.</p></div>}
+            </div>
+          </TabsContent>
+        )}
 
         <TabsContent value="history" className="mt-0">
           <Card className="border-none shadow-sm overflow-hidden rounded-3xl">
             <CardHeader className="bg-white border-b">
-              <CardTitle className="text-sm font-black uppercase text-primary flex items-center gap-2">
-                <History className="w-4 h-4" /> Assessment History
-              </CardTitle>
-              <CardDescription>Verified results from past evaluations.</CardDescription>
+              <CardTitle className="text-sm font-black uppercase text-primary flex items-center gap-2"><History className="w-4 h-4" /> Assessment History</CardTitle>
+              <CardDescription>Verified results from completed online examinations.</CardDescription>
             </CardHeader>
             <CardContent className="p-0 overflow-x-auto">
               <Table className="min-w-[600px]">
-                <TableHeader className="bg-accent/10">
-                  <TableRow className="uppercase text-[10px] font-black tracking-widest">
-                    <TableHead className="pl-8 py-4">Assessment Title</TableHead>
-                    <TableHead>Subject</TableHead>
-                    <TableHead className="text-center">Score</TableHead>
-                    <TableHead className="text-center">Date</TableHead>
-                    <TableHead className="text-right pr-8">Integrity</TableHead>
-                  </TableRow>
-                </TableHeader>
+                <TableHeader className="bg-accent/10"><TableRow className="uppercase text-[10px] font-black tracking-widest"><TableHead className="pl-8 py-4">Assessment Title</TableHead><TableHead>Subject</TableHead><TableHead className="text-center">Score</TableHead><TableHead className="text-center">Submitted</TableHead><TableHead className="text-right pr-8">Status</TableHead></TableRow></TableHeader>
                 <TableBody>
-                  {MOCK_EXAM_HISTORY.map((hist, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="pl-8 py-4 font-bold text-sm text-primary">{hist.title}</TableCell>
-                      <TableCell><Badge variant="outline" className="text-[10px]">{hist.subject}</Badge></TableCell>
-                      <TableCell className="text-center font-black text-primary">
-                        {hist.status === 'ABSENT' ? '---' : `${hist.score} / ${hist.total}`}
-                      </TableCell>
-                      <TableCell className="text-center text-xs text-muted-foreground">{hist.date}</TableCell>
-                      <TableCell className="text-right pr-8">
-                        <Badge className={cn(
-                          "text-[9px] font-black uppercase border-none px-3",
-                          getStatusStyles(hist.status)
-                        )}>
-                          {getStatusIcon(hist.status)}
-                          {hist.status}
-                        </Badge>
-                      </TableCell>
+                  {(resultsData?.results ?? []).map((submission: any) => (
+                    <TableRow key={submission.id}>
+                      <TableCell className="pl-8 py-4 font-bold text-sm text-primary">{submission.exam_title}</TableCell>
+                      <TableCell><Badge variant="outline" className="text-[10px]">{submission.subject_name ?? "Subject"}</Badge></TableCell>
+                      <TableCell className="text-center font-black text-primary">{submission.score != null && submission.total_marks != null ? `${submission.score} / ${submission.total_marks}` : "---"}</TableCell>
+                      <TableCell className="text-center text-xs text-muted-foreground">{formatDateTime(submission.submitted_at)}</TableCell>
+                      <TableCell className="text-right pr-8"><Link href={`/dashboard/exams/results?id=${submission.id}`}><Badge className="bg-primary text-white border-none text-[9px] font-black uppercase px-3 cursor-pointer">{submission.status}</Badge></Link></TableCell>
                     </TableRow>
                   ))}
+                  {!resultsLoading && !(resultsData?.results ?? []).length && <TableRow><TableCell colSpan={5} className="py-12 text-center text-muted-foreground">No graded online exam history yet.</TableCell></TableRow>}
                 </TableBody>
               </Table>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {!isStudent && !isTeacher && (
+        {!isStudent && (
           <TabsContent value="timetable" className="mt-0">
             <Card className="border-none shadow-sm overflow-hidden rounded-3xl">
               <CardHeader className="border-b bg-white flex flex-col md:flex-row items-center justify-between gap-4 p-6">
-                <div>
-                  <CardTitle className="text-lg font-black text-primary uppercase tracking-tight">Institutional Master Timetable</CardTitle>
-                  <CardDescription>
-                    {isSchoolAdmin ? "Visualizing all sections and duty coverage." : "Focused view for your assigned section."}
-                  </CardDescription>
-                </div>
-                <Button variant="outline" size="sm" className="w-full md:w-auto gap-2 rounded-xl h-10 font-bold"><Printer className="w-4 h-4" /> Print Master Plan</Button>
+                <div><CardTitle className="text-lg font-black text-primary uppercase tracking-tight">Class Exam Overview</CardTitle><CardDescription>Live school exam schedules grouped by class level.</CardDescription></div>
+                <Button variant="outline" size="sm" className="w-full md:w-auto gap-2 rounded-xl h-10 font-bold"><Printer className="w-4 h-4" /> Print Overview</Button>
               </CardHeader>
               <CardContent className="p-0 overflow-x-auto">
                 <Table className="min-w-[800px]">
-                  <TableHeader className="bg-accent/10 uppercase text-[10px] font-black tracking-widest border-b">
-                    <TableRow>
-                      <TableHead className="pl-6 h-12">Class Level</TableHead>
-                      {DAYS.map(day => <TableHead key={day}>{day}</TableHead>)}
-                    </TableRow>
-                  </TableHeader>
+                  <TableHeader className="bg-accent/10 uppercase text-[10px] font-black tracking-widest border-b"><TableRow><TableHead className="pl-6 h-12">Class Level</TableHead><TableHead>Scheduled Exams</TableHead></TableRow></TableHeader>
                   <TableBody>
-                    {availableClasses.map(cls => (
-                      <TableRow key={cls} className="border-b last:border-0 hover:bg-accent/5">
-                        <TableCell className="pl-6 font-bold text-primary text-xs whitespace-nowrap">{cls}</TableCell>
-                        {DAYS.map(day => (
-                          <TableCell key={day} className="py-4">
-                            <div className="bg-white p-2 rounded-xl border shadow-sm min-h-[65px] flex flex-col justify-center">
-                              <p className="text-[10px] font-black text-primary leading-tight">Advanced Physics</p>
-                              <div className="flex items-center gap-1.5 mt-1.5 opacity-60">
-                                <MapPin className="w-2.5 h-2.5" />
-                                <span className="text-[8px] font-bold uppercase">Room 402</span>
-                              </div>
-                            </div>
-                          </TableCell>
-                        ))}
+                    {timetableRows.map((row) => (
+                      <TableRow key={row.className} className="border-b last:border-0 hover:bg-accent/5">
+                        <TableCell className="pl-6 font-bold text-primary text-xs whitespace-nowrap">{row.className}</TableCell>
+                        <TableCell className="py-4">
+                          <div className="flex flex-wrap gap-3">
+                            {row.exams.length ? row.exams.map((exam: any) => <div key={exam.id} className="bg-white p-3 rounded-xl border shadow-sm min-w-[220px]"><p className="text-[11px] font-black text-primary leading-tight">{exam.title}</p><p className="text-[10px] text-muted-foreground mt-1">{exam.subject_name ?? "Subject"}</p><div className="flex items-center gap-1.5 mt-2 opacity-60"><Clock className="w-3 h-3" /><span className="text-[9px] font-bold uppercase">{formatDateTime(exam.start_time)}</span></div></div>) : <p className="text-xs text-muted-foreground">No exam scheduled for this class yet.</p>}
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -613,45 +317,19 @@ export default function ExamsPage() {
         )}
       </Tabs>
 
-      {/* INSTRUCTIONS DIALOG */}
       <Dialog open={!!viewingInstructions} onOpenChange={() => setViewingInstructions(null)}>
         <DialogContent className="sm:max-w-md rounded-[2.5rem] p-0 overflow-hidden border-none shadow-2xl">
           <DialogHeader className="bg-primary p-8 text-white relative">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white/10 rounded-2xl">
-                <Info className="w-8 h-8 text-secondary" />
-              </div>
-              <div>
-                <DialogTitle className="text-2xl font-black">Exam Instructions</DialogTitle>
-                <DialogDescription className="text-white/60">{viewingInstructions?.title}</DialogDescription>
-              </div>
-            </div>
-            <Button variant="ghost" size="icon" onClick={() => setViewingInstructions(null)} className="absolute top-4 right-4 text-white/40 hover:text-white">
-              <X className="w-6 h-6" />
-            </Button>
+            <div className="flex items-center gap-4"><div className="p-3 bg-white/10 rounded-2xl"><Info className="w-8 h-8 text-secondary" /></div><div><DialogTitle className="text-2xl font-black">Exam Instructions</DialogTitle><DialogDescription className="text-white/60">{viewingInstructions?.title}</DialogDescription></div></div>
+            <Button variant="ghost" size="icon" onClick={() => setViewingInstructions(null)} className="absolute top-4 right-4 text-white/40 hover:text-white"><X className="w-6 h-6" /></Button>
           </DialogHeader>
           <div className="p-8 space-y-6">
             <div className="bg-primary/5 p-6 rounded-2xl border border-primary/10 space-y-4">
-              <div className="flex items-start gap-3">
-                <Clock className="w-5 h-5 text-primary mt-0.5" />
-                <div>
-                  <p className="text-[10px] font-black uppercase text-primary/60">Schedule</p>
-                  <p className="text-sm font-bold text-primary">
-                    Starts: {viewingInstructions && new Date(viewingInstructions.startTime).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <p className="text-[10px] font-black uppercase text-primary/60">Pedagogical Guidelines</p>
-                <p className="text-sm leading-relaxed text-muted-foreground italic font-medium">
-                  "{viewingInstructions?.instructions}"
-                </p>
-              </div>
+              <div className="flex items-start gap-3"><Clock className="w-5 h-5 text-primary mt-0.5" /><div><p className="text-[10px] font-black uppercase text-primary/60">Schedule</p><p className="text-sm font-bold text-primary">Starts: {formatDateTime(viewingInstructions?.start_time)}</p></div></div>
+              <div className="space-y-2"><p className="text-[10px] font-black uppercase text-primary/60">Pedagogical Guidelines</p><p className="text-sm leading-relaxed text-muted-foreground italic font-medium">"{viewingInstructions?.instructions || "Please report early and follow your school's invigilation instructions."}"</p></div>
             </div>
           </div>
-          <DialogFooter className="bg-accent/20 p-6 border-t border-accent">
-            <Button onClick={() => setViewingInstructions(null)} className="w-full h-12 rounded-xl shadow-lg font-bold">I Understand</Button>
-          </DialogFooter>
+          <DialogFooter className="bg-accent/20 p-6 border-t border-accent"><Button onClick={() => setViewingInstructions(null)} className="w-full h-12 rounded-xl shadow-lg font-bold">I Understand</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
