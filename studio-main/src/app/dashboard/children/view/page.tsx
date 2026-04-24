@@ -67,6 +67,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import Link from "next/link";
 import { attendanceService } from "@/lib/api/services/attendance.service";
 import { resolveMediaUrl } from "@/lib/media";
+import { downloadHtmlDocument, escapeHtml } from "@/lib/browser-download";
 
 const CLASSES = ["6ème / Form 1", "5ème / Form 2", "4ème / Form 3", "3ème / Form 4", "2nde / Form 5", "1ère / Lower Sixth", "Terminale / Upper Sixth"];
 
@@ -236,10 +237,22 @@ export default function StudentDetailsPage() {
   }, [rawStudent?.id]);
 
   const handleDownload = (title: string) => {
-    toast({ title: "Processing PDF", description: `Your official copy of ${title} is being prepared for download.` });
-    setTimeout(() => {
-      toast({ title: "Download Ready", description: `${title} has been saved.` });
-    }, 2000);
+    if (!student) return;
+
+    const html = buildStudentDocumentHtml({
+      title,
+      student,
+      platform: platformSettings,
+      type:
+        title === "Digital ID Card"
+          ? "id"
+          : title === "Honour Roll Certificate"
+            ? "certificate"
+            : "report",
+    });
+
+    downloadHtmlDocument(html, `${title.replace(/\s+/g, "_").toLowerCase()}.html`);
+    toast({ title: "Download ready", description: `${title} has been exported for printing or PDF save.` });
   };
 
   if (loading) return (
@@ -1128,4 +1141,98 @@ function SignatureSVG({ className }: { className?: string }) {
       <path d="M10 25C15 25 20 15 25 15C30 15 35 30 40 30C45 30 50 10 55 10C60 10 65 35 70 35C75 35 80 20 85 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
+}
+
+function buildStudentDocumentHtml({
+  title,
+  student,
+  platform,
+  type,
+}: {
+  title: string;
+  student: any;
+  platform: any;
+  type: "report" | "id" | "certificate";
+}) {
+  const grades = (student?.grades || [])
+    .map(
+      (grade: any) => `
+        <tr>
+          <td>${escapeHtml(grade.subject)}</td>
+          <td>${escapeHtml(Number(grade.seq1 || 0).toFixed(2))}</td>
+          <td>${escapeHtml(Number(grade.seq2 || 0).toFixed(2))}</td>
+          <td>${escapeHtml(Number(grade.average || 0).toFixed(2))}</td>
+        </tr>`
+    )
+    .join("");
+
+  const identityBlock = `
+    <div class="identity">
+      ${student?.avatar ? `<img class="avatar" src="${escapeHtml(student.avatar)}" alt="${escapeHtml(student.name)}" />` : ""}
+      <div>
+        <h1>${escapeHtml(student?.name)}</h1>
+        <p><strong>Matricule:</strong> ${escapeHtml(student?.id)}</p>
+        <p><strong>Class:</strong> ${escapeHtml(student?.class)}</p>
+        <p><strong>Section:</strong> ${escapeHtml(student?.section)}</p>
+      </div>
+    </div>`;
+
+  const body =
+    type === "id"
+      ? `
+        ${identityBlock}
+        <p class="summary">This is the official student identity copy generated from the live registry.</p>`
+      : type === "certificate"
+        ? `
+          ${identityBlock}
+          <p class="summary">
+            This certifies that <strong>${escapeHtml(student?.name)}</strong> obtained an annual average of
+            <strong>${escapeHtml(Number(student?.annualAvg || 0).toFixed(2))} / 20</strong> and qualifies for the honour roll.
+          </p>`
+        : `
+          ${identityBlock}
+          <table>
+            <thead>
+              <tr>
+                <th>Subject</th>
+                <th>Seq 1</th>
+                <th>Seq 2</th>
+                <th>Average</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${grades || '<tr><td colspan="4">No report-card grades are available yet.</td></tr>'}
+            </tbody>
+          </table>`;
+
+  return `<!doctype html>
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>${escapeHtml(title)}</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 32px; color: #14263d; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #14263d; padding-bottom: 16px; margin-bottom: 24px; }
+        .logo { max-width: 72px; max-height: 72px; object-fit: contain; }
+        .identity { display: flex; gap: 20px; align-items: center; margin-bottom: 24px; background: #f5f8fb; padding: 16px; border-radius: 12px; }
+        .avatar { width: 96px; height: 96px; border-radius: 16px; object-fit: cover; background: #edf3f8; }
+        .summary { background: #f5f8fb; padding: 16px; border-radius: 12px; line-height: 1.6; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #d8e0e8; padding: 10px; font-size: 12px; text-align: left; }
+        th { background: #edf3f8; text-transform: uppercase; font-size: 11px; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div>
+          <p>Republic of Cameroon</p>
+          <p>Peace - Work - Fatherland</p>
+          <h2>${escapeHtml(title)}</h2>
+          <p>${escapeHtml(student?.school?.name || platform?.name || "EduIgnite")}</p>
+        </div>
+        ${(student?.school?.logo || platform?.logo) ? `<img class="logo" src="${escapeHtml(student?.school?.logo || platform?.logo)}" alt="Institution logo" />` : ""}
+      </div>
+      ${body}
+    </body>
+  </html>`;
 }

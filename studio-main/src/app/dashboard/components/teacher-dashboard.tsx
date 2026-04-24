@@ -14,6 +14,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useStudents } from "@/lib/hooks/useStudents";
 import { useGrades } from "@/lib/hooks/useGrades";
 import { useAttendanceSessions } from "@/lib/hooks/useAttendance";
+import { staffRemarksService } from "@/lib/api/services/staff-remarks.service";
+import { getApiErrorMessage } from "@/lib/api/errors";
+import { downloadBlob } from "@/lib/browser-download";
 
 export function TeacherDashboard() {
   const { user, staffRemarks } = useAuth();
@@ -99,11 +102,27 @@ export function TeacherDashboard() {
     date: new Date(grade.created_at).toLocaleDateString(),
   }));
 
-  const handleDownloadRemark = () => {
-    toast({ title: "Dossier Preparation", description: "Generating formal administrative report..." });
-    setTimeout(() => {
-      toast({ title: "Report Ready", description: "Download successful." });
-    }, 1500);
+  const handleDownloadRemark = async () => {
+    if (!user?.id) {
+      toast({
+        variant: "destructive",
+        title: "Download failed",
+        description: "Your staff profile is not linked correctly yet.",
+      });
+      return;
+    }
+
+    try {
+      const blob = await staffRemarksService.downloadReport(user.id);
+      downloadBlob(blob, `${(user.name || "staff").replace(/\s+/g, "_").toLowerCase()}_remarks_report.pdf`);
+      toast({ title: "Report downloaded", description: "Your official remarks dossier has been saved." });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Download failed",
+        description: getApiErrorMessage(error, "Could not download the official remarks dossier."),
+      });
+    }
   };
 
   return (

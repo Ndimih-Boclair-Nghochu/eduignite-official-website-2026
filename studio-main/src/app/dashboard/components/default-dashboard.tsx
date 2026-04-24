@@ -5,16 +5,20 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ShieldCheck, Activity, GraduationCap, Wallet, TrendingUp, Info, Lock, QrCode } from "lucide-react";
-import { AreaChart, Area, ResponsiveContainer } from "recharts";
+import { ShieldCheck, Activity, GraduationCap, Wallet, Info, Lock, QrCode, Building2, CalendarDays, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { DATA_PERIODS } from "./dashboard-mock-data";
 import { getLicenseAccessState } from "@/lib/license";
 
 export function DefaultDashboard() {
   const { user, platformSettings } = useAuth();
   const licenseState = getLicenseAccessState(user as any, platformSettings as any);
+  const schoolName = user?.school?.name || "Independent Account";
+  const schoolLocation = [user?.school?.city_village, user?.school?.region].filter(Boolean).join(", ") || "Not linked to a school node yet";
+  const accessSummary = licenseState.restricted
+    ? "Platform access is currently restricted until the license condition is cleared."
+    : "Platform access is active and your account can use the connected services normally.";
+  const nextDeadline = platformSettings?.platformFeeDeadline || platformSettings?.licenseDeadline || null;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -63,22 +67,41 @@ export function DefaultDashboard() {
         <Card className="lg:col-span-2 border-none shadow-xl overflow-hidden rounded-[2rem]">
           <CardHeader className="bg-primary/5 p-8 border-b">
             <CardTitle className="text-primary flex items-center gap-2 font-black uppercase tracking-tighter">
-              <TrendingUp className="w-5 h-5 text-secondary"/> Pedagogical Pulse
+              <Building2 className="w-5 h-5 text-secondary"/> Account Connection Summary
             </CardTitle>
-            <CardDescription>Visual summary of institutional engagement and activity.</CardDescription>
+            <CardDescription>Live identity and access details from the connected profile and school node.</CardDescription>
           </CardHeader>
-          <CardContent className="h-[350px] pt-10">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={DATA_PERIODS.monthly}>
-                <defs>
-                  <linearGradient id="colorPulse" x1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.15}/>
-                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <Area type="monotone" dataKey="performance" stroke="hsl(var(--primary))" strokeWidth={4} fill="url(#colorPulse)" />
-              </AreaChart>
-            </ResponsiveContainer>
+          <CardContent className="p-8">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-primary/10 bg-white p-5 shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">School Node</p>
+                <p className="mt-2 text-lg font-black text-primary">{schoolName}</p>
+                <p className="mt-2 text-sm text-muted-foreground">{schoolLocation}</p>
+              </div>
+              <div className="rounded-2xl border border-primary/10 bg-white p-5 shadow-sm">
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Current Access</p>
+                <p className="mt-2 text-lg font-black text-primary">{licenseState.statusLabel}</p>
+                <p className="mt-2 text-sm text-muted-foreground">{accessSummary}</p>
+              </div>
+              <div className="rounded-2xl border border-primary/10 bg-white p-5 shadow-sm">
+                <div className="flex items-center gap-2 text-primary">
+                  <CalendarDays className="w-4 h-4" />
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Next Fee Deadline</p>
+                </div>
+                <p className="mt-2 text-lg font-black text-primary">{nextDeadline || "Not configured"}</p>
+                <p className="mt-2 text-sm text-muted-foreground">This value comes directly from the current platform settings.</p>
+              </div>
+              <div className="rounded-2xl border border-primary/10 bg-white p-5 shadow-sm">
+                <div className="flex items-center gap-2 text-primary">
+                  <Sparkles className="w-4 h-4" />
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Profile Readiness</p>
+                </div>
+                <p className="mt-2 text-lg font-black text-primary">
+                  {[user?.email, user?.phone, user?.avatar].filter(Boolean).length} / 3 essentials set
+                </p>
+                <p className="mt-2 text-sm text-muted-foreground">Complete contact details and profile media so they display consistently across the platform.</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
