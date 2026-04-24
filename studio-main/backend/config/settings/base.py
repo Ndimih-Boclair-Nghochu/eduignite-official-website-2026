@@ -6,11 +6,21 @@ from decouple import config, Csv
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+
+def env_flag(name: str) -> bool:
+    return os.environ.get(name, '').lower() in {'1', 'true', 'yes', 'on'}
+
+
+IS_RENDER = env_flag('RENDER')
+
 SECRET_KEY = config('DJANGO_SECRET_KEY', default='django-insecure-dev-key-change-in-production')
 
 DEBUG = config('DEBUG', default=False, cast=bool)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
+render_external_hostname = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '').strip()
+if render_external_hostname and render_external_hostname not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(render_external_hostname)
 
 INSTALLED_APPS = [
     'daphne',
@@ -328,14 +338,12 @@ else:
         }
     }
 
-CELERY_BROKER_URL = config(
-    'CELERY_BROKER_URL',
-    default='redis://localhost:6379/0'
-)
-CELERY_RESULT_BACKEND = config(
-    'CELERY_RESULT_BACKEND',
-    default='redis://localhost:6379/0'
-)
+default_celery_broker = ''
+if REDIS_URL:
+    default_celery_broker = REDIS_URL.rsplit('/', 1)[0] + '/0' if '/' in REDIS_URL else REDIS_URL
+
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default=default_celery_broker)
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default=CELERY_BROKER_URL)
 CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -343,6 +351,16 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60
 CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60
+CELERY_TASK_ALWAYS_EAGER = config(
+    'CELERY_TASK_ALWAYS_EAGER',
+    default=not bool(CELERY_BROKER_URL),
+    cast=bool,
+)
+CELERY_TASK_EAGER_PROPAGATES = config(
+    'CELERY_TASK_EAGER_PROPAGATES',
+    default=CELERY_TASK_ALWAYS_EAGER,
+    cast=bool,
+)
 
 LOGGING = {
     'version': 1,
@@ -466,7 +484,9 @@ AWS_S3_CUSTOM_DOMAIN = config('AWS_S3_CUSTOM_DOMAIN', default='')
 AWS_DEFAULT_ACL = 'public-read'
 AWS_S3_OBJECT_PARAMETERS = {'CacheControl': 'max-age=86400'}
 AWS_LOCATION = 'media'
-STATIC_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_LOCATION}/' if AWS_S3_CUSTOM_DOMAIN else '/static/'
+if AWS_STORAGE_BUCKET_NAME and AWS_S3_CUSTOM_DOMAIN:
+    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_LOCATION}/'
 
 SENTRY_DSN = config('SENTRY_DSN', default='')
 if SENTRY_DSN:

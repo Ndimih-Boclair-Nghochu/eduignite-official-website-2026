@@ -7,7 +7,7 @@ from channels.security.websocket import AllowedHostsOriginValidator
 if not os.environ.get('DJANGO_SETTINGS_MODULE'):
     is_production = any(
         os.environ.get(env_var)
-        for env_var in ['RAILWAY_PROJECT_ID', 'RAILWAY_ENVIRONMENT', 'RAILWAY_ENVIRONMENT_NAME']
+        for env_var in ['RAILWAY_PROJECT_ID', 'RAILWAY_ENVIRONMENT', 'RAILWAY_ENVIRONMENT_NAME', 'RENDER']
     ) or os.environ.get('ENVIRONMENT') == 'production'
     os.environ.setdefault(
         'DJANGO_SETTINGS_MODULE',

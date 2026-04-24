@@ -7,6 +7,9 @@ from sentry_sdk.integrations.redis import RedisIntegration
 DEBUG = False
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='example.com', cast=Csv())
+render_external_hostname = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '').strip()
+if render_external_hostname and render_external_hostname not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(render_external_hostname)
 
 # ── CORS: lock down to configured origins in production ────────────────────
 # Set CORS_ALLOWED_ORIGINS in .env (comma-separated):
@@ -25,6 +28,9 @@ CSRF_TRUSTED_ORIGINS = config(
     default='https://example.com',
     cast=Csv()
 )
+render_external_url = os.environ.get('RENDER_EXTERNAL_URL', '').strip()
+if render_external_url and render_external_url not in CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS.append(render_external_url)
 
 # ── Sentry error monitoring ────────────────────────────────────────────────
 SENTRY_DSN = config('SENTRY_DSN', default='')
@@ -65,17 +71,18 @@ SECURE_CONTENT_SECURITY_POLICY = {
 
 DATABASES['default']['CONN_MAX_AGE'] = 600
 
-CACHES['default'] = {
-    'BACKEND': 'django_redis.cache.RedisCache',
-    'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/1'),
-    'OPTIONS': {
-        'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        'CONNECTION_POOL_KWARGS': {
-            'max_connections': 50,
-            'retry_on_timeout': True,
-        },
+if config('REDIS_URL', default=''):
+    CACHES['default'] = {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': config('REDIS_URL'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': 50,
+                'retry_on_timeout': True,
+            },
+        }
     }
-}
 
 REST_FRAMEWORK['DEFAULT_RENDERER_CLASSES'] = [
     'rest_framework.renderers.JSONRenderer',
